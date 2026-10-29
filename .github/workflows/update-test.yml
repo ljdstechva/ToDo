@@ -1,0 +1,84 @@
+# After a release: installs the previous release on emulators and checks that the app updates
+# itself to the new one (automatically in the background, from Settings, and through the system
+# prompt when "install unknown apps" is not allowed yet). Publishes nothing.
+name: Update test
+
+on:
+  workflow_run:
+    workflows: ["Build, test and release"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-test
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [34, 36]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick the releases
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t TAGS < <(gh release list --limit 10 --exclude-drafts --json tagName,createdAt \
+            --jq 'sort_by(.createdAt) | reverse | .[].tagName')
+          if [ "${#TAGS[@]}" -lt 2 ]; then
+            echo "::notice::Only ${#TAGS[@]} release(s); the update test needs two."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          NEW=${TAGS[0]}; OLD=${TAGS[1]}
+          gh release download "$OLD" --pattern "*.apk" --dir old
+          echo "old_apk=$(ls old/*.apk | head -n1)" >> "$GITHUB_OUTPUT"
+          echo "old_code=${OLD##*.}" >> "$GITHUB_OUTPUT"
+          echo "new_code=${NEW##*.}" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Update test: $OLD -> $NEW" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Enable KVM
+        if: ${{ steps.rel.outputs.skip == 'false' }}
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Update on Android API ${{ matrix.api }}
+        if: ${{ steps.rel.outputs.skip == 'false' }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disk-size: 6000M
+          emulator-boot-timeout: 900
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none -camera-front none
+          script: python3 ci/update_e2e.py --old-apk "${{ steps.rel.outputs.old_apk }}" --old-code ${{ steps.rel.outputs.old_code }} --new-code ${{ steps.rel.outputs.new_code }} --out out
+
+      - name: Results
+        if: ${{ always() && steps.rel.outputs.skip == 'false' }}
+        run: |
+          [ -f out/summary.md ] && cat out/summary.md >> "$GITHUB_STEP_SUMMARY" || echo "No summary" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.rel.outputs.skip == 'false' }}
+        with:
+          name: update-test-api${{ matrix.api }}
+          path: out
+          retention-days: 14

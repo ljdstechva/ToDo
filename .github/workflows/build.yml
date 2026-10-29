@@ -1,0 +1,221 @@
+# Builds the app, runs the unit tests and the live tests on emulators (Android 14 and 16), and on
+# main publishes a GitHub release that phones pick up through the in-app updater.
+#
+# Versions: versionCode = the run number, tag = v<appVersionBase>.<run number> (e.g. v1.0.12).
+# Every release is signed with the key from the RELEASE_KEYSTORE_* secrets; a different key and
+# phones refuse the update.
+name: Build, test and release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_BUILD_NUMBER: ${{ github.run_number }}
+  APP_UPDATE_REPO: ${{ github.repository }}
+  GRADLE_FLAGS: --stacktrace --no-daemon -Dkotlin.compiler.execution.strategy=in-process
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-36 build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Version
+        id: version
+        run: |
+          BASE=$(grep '^appVersionBase=' gradle.properties | cut -d= -f2)
+          echo "tag=v${BASE}.${APP_BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "Version ${BASE}.${APP_BUILD_NUMBER} (code ${APP_BUILD_NUMBER})"
+
+      - name: Restore release key
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_KEYSTORE_B64}" ]; then
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "No release key for pull requests; the release APK is debug-signed."; exit 0
+            fi
+            echo "::error::RELEASE_KEYSTORE_B64 secret is missing"; exit 1
+          fi
+          KS="$RUNNER_TEMP/release.p12"
+          echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$KS"
+          keytool -list -keystore "$KS" -storepass "$RELEASE_KEYSTORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" > /dev/null
+          echo "RELEASE_KEYSTORE_PATH=$KS" >> "$GITHUB_ENV"
+
+      - name: Unit tests and APKs
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          ./gradlew $GRADLE_FLAGS \
+            :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
+
+      - name: Check the release APK
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/ToDo-${TAG}.apk"
+          APK="dist/ToDo-${TAG}.apk"
+          {
+            echo "## ToDo-${TAG}.apk"
+            echo '```'
+            "$BT/aapt2" dump badging "$APK" | grep -E "^package:|sdkVersion|targetSdkVersion|application-label:"
+            ls -l "$APK" | awk '{print $5 " bytes"}'
+            sha256sum "$APK"
+            "$BT/apksigner" verify --print-certs "$APK" | grep -E "SHA-256|Signer"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          "$BT/aapt2" dump badging "$APK" | grep -q "^package: name='com.ljdstechva.todo' versionCode='${APP_BUILD_NUMBER}'"
+          if [ -n "${RELEASE_KEYSTORE_PATH:-}" ]; then
+            EXPECTED=$(keytool -list -v -keystore "$RELEASE_KEYSTORE_PATH" -storepass "$RELEASE_KEYSTORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" \
+              | grep -m1 'SHA256:' | awk '{print $2}' | tr -d ':' | tr 'A-F' 'a-f')
+            ACTUAL=$("$BT/apksigner" verify --print-certs "$APK" | grep -m1 'certificate SHA-256 digest' | awk '{print $NF}')
+            echo "expected $EXPECTED / actual $ACTUAL"
+            [ "$EXPECTED" = "$ACTUAL" ] || { echo "::error::Release APK signed with the wrong key"; exit 1; }
+          fi
+
+      - name: Unit test report
+        if: ${{ always() }}
+        run: |
+          python3 - <<'EOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import glob, xml.etree.ElementTree as ET
+          t = f = 0
+          for p in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
+              r = ET.parse(p).getroot()
+              t += int(r.get("tests", 0)); f += int(r.get("failures", 0)) + int(r.get("errors", 0))
+              for c in r.iter("testcase"):
+                  if c.find("failure") is not None or c.find("error") is not None:
+                      print(f"- FAILED {r.get('name')}.{c.get('name')}")
+          print(f"\n**Unit tests: {t - f}/{t} passed**")
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: error
+
+  emulator:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [34, 36]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-apks
+          path: apks
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Live tests on Android API ${{ matrix.api }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 4096M
+          disk-size: 6000M
+          emulator-boot-timeout: 900
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none -camera-front none
+          script: bash ci/instrumented.sh apks out
+
+      - name: Results
+        if: ${{ always() }}
+        run: |
+          [ -f out/summary.md ] && cat out/summary.md >> "$GITHUB_STEP_SUMMARY" || echo "No summary" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: live-test-api${{ matrix.api }}
+          path: out
+          retention-days: 14
+
+  release:
+    needs: [build, emulator]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-apk
+          path: dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          APK="dist/ToDo-${TAG}.apk"
+          PREV=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          {
+            echo "What's new:"
+            if [ -n "$PREV" ]; then
+              git log --no-merges --format='- %s' "$PREV..HEAD"
+            else
+              git log --no-merges --format='- %s' -n 20
+            fi
+            echo
+            echo "SHA-256: $(sha256sum "$APK" | cut -d' ' -f1)"
+          } > notes.md
+          cat notes.md
+          gh release create "$TAG" "$APK" --target "$GITHUB_SHA" --title "To-Do ${TAG}" --notes-file notes.md
+          echo "Released $(gh release view "$TAG" --json url --jq .url)" | tee -a "$GITHUB_STEP_SUMMARY"
