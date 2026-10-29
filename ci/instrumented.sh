@@ -24,8 +24,12 @@ adb logcat -c
 adb logcat -v time > "$OUT/logcat.txt" 2>&1 &
 LOGCAT=$!
 
-adb install -r -g "$APKS/app-debug.apk" || exit 1
-adb install -r "$APKS/app-debug-androidTest.apk" || exit 1
+# The artifact keeps the build folders (debug/, androidTest/debug/), so look the APKs up by name.
+APP_APK=$(find "$APKS" -name app-debug.apk | head -n1)
+TEST_APK=$(find "$APKS" -name app-debug-androidTest.apk | head -n1)
+echo "app: $APP_APK  tests: $TEST_APK"
+adb install -r -g "$APP_APK" || exit 1
+adb install -r "$TEST_APK" || exit 1
 adb shell rm -rf /data/local/tmp/todo-shots
 
 timeout 1800 adb shell am instrument -w -r "$PKG.test/androidx.test.runner.AndroidJUnitRunner" > "$OUT/instrument.txt" 2>&1
