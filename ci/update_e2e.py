@@ -185,6 +185,12 @@ def main():
 
     api = sh("getprop ro.build.version.sdk").strip()
     log(f"API {api}: update {args.old_code} -> {args.new_code}")
+    # "Booted" comes before the user is unlocked; installs and alarms in that window misbehave.
+    for _ in range(90):
+        if "RUNNING_UNLOCKED" in sh("dumpsys user"):
+            break
+        time.sleep(2)
+    time.sleep(30)
     for cmd in ("settings put global window_animation_scale 0", "settings put global transition_animation_scale 0",
                 "settings put global animator_duration_scale 0", "svc power stayon true",
                 "input keyevent KEYCODE_WAKEUP", "wm dismiss-keyguard"):
