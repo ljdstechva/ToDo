@@ -45,7 +45,9 @@ class InstallResultReceiver : BroadcastReceiver() {
                     intent = PendingIntent.getActivity(context, 4, confirm, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),
                 )
             }
-            PackageInstaller.STATUS_SUCCESS -> Notifications.cancelUpdate(context)
+            // Nothing to do: the new version's BootReceiver (MY_PACKAGE_REPLACED) replaces the
+            // progress notice with "To-Do updated". Cancelling here raced with it and removed it.
+            PackageInstaller.STATUS_SUCCESS -> Unit
             else -> {
                 val text = message ?: "Install failed (code $status)."
                 Updater.onInstallFailed(text)

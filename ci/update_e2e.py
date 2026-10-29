@@ -19,6 +19,10 @@ import xml.etree.ElementTree as ET
 PKG = "com.ljdstechva.todo"
 OUT = "out"
 RESULTS = []
+# Android lets an installer update the same app without asking only once per 30 s (its
+# SilentUpdatePolicy); sooner, it shows its own install screen. Real updates are hours apart.
+SILENT_UPDATE_GAP = 35
+last_silent_update = 0.0
 
 
 def adb(*args, check=False, timeout=120):
@@ -85,6 +89,22 @@ def wait_for_version(code, timeout):
     return False
 
 
+def wait_for_notification(text, timeout=30):
+    end = time.time() + timeout
+    while time.time() < end:
+        if text in sh("dumpsys notification --noredact"):
+            return True
+        time.sleep(2)
+    return False
+
+
+def respect_silent_update_gap():
+    wait = last_silent_update + SILENT_UPDATE_GAP - time.time()
+    if wait > 0:
+        log(f"Waiting {wait:.0f} s: Android's minimum gap between silent updates")
+        time.sleep(wait)
+
+
 def focus():
     return " ".join(l.strip() for l in sh("dumpsys window").splitlines() if "mCurrentFocus" in l or "mFocusedApp" in l)
 
@@ -103,7 +123,23 @@ def record(name, ok, detail):
     log(f"{'PASS' if ok else 'FAIL'} {name}: {detail}")
 
 
+def open_settings():
+    """Opens the app on Settings the way an update notification does. Returns a note when the
+    link did not land there (versions before 1.0.7 could lose it if Android recreated the screen
+    during start-up) and the gear button had to be used instead."""
+    sh(f"am start -W -n {PKG}/.MainActivity --es open settings")
+    if find_text(r"^(update now|check for updates)$", timeout=15) is not None:
+        return ""
+    gear = find_text(r"^settings$", timeout=10)
+    if gear is None:
+        return " (Settings link failed, no gear button)"
+    tap(gear)
+    return " (Settings link failed; opened with the gear button)"
+
+
 def scenario_auto(args):
+    global last_silent_update
+    respect_silent_update_gap()
     install_old(args.old_apk, args.old_code, allow_installs=True)
     sh(f"am start -W -n {PKG}/.MainActivity")
     banner = find_text(r"is available", timeout=60)
@@ -114,7 +150,9 @@ def scenario_auto(args):
     sh("input keyevent KEYCODE_HOME")
     log("Left the app; waiting for the background install")
     ok = wait_for_version(args.new_code, timeout=300)
-    notif = "updated to" in sh("dumpsys notification --noredact")
+    if ok:
+        last_silent_update = time.time()
+    notif = ok and wait_for_notification("updated to")
     sh("cmd statusbar expand-notifications")
     time.sleep(2)
     shot("A2-updated-notification")
@@ -124,29 +162,35 @@ def scenario_auto(args):
 
 
 def scenario_manual(args):
+    global last_silent_update
     install_old(args.old_apk, args.old_code, allow_installs=True)
-    sh(f"am start -W -n {PKG}/.MainActivity --es open settings")
+    note = open_settings()
     btn = find_text(r"^update now$", timeout=10)
     if btn is None:
         check = find_text(r"^check for updates$", timeout=30)
         if check is None:
             shot("B1-settings")
-            record("B manual update", False, "Settings has no 'Check for updates' button")
+            record("B manual update", False, "Settings has no 'Check for updates' button" + note)
             return
         tap(check)
         btn = find_text(r"^update now$", timeout=60)
     shot("B1-update-now")
     if btn is None:
-        record("B manual update", False, "no 'Update now' after checking")
+        record("B manual update", False, "no 'Update now' after checking" + note)
         return
+    respect_silent_update_gap()
     tap(btn)
     ok = wait_for_version(args.new_code, timeout=300)
-    record("B manual update", ok, f"version now {version_code()}")
+    if ok:
+        last_silent_update = time.time()
+    else:
+        shot("B2-after-tap")
+    record("B manual update", ok, f"version now {version_code()}" + note)
 
 
 def scenario_no_permission(args):
     install_old(args.old_apk, args.old_code, allow_installs=False)
-    sh(f"am start -W -n {PKG}/.MainActivity --es open settings")
+    note = open_settings()
     btn = find_text(r"^update now$", timeout=10)
     if btn is None:
         check = find_text(r"^check for updates$", timeout=30)
@@ -154,8 +198,9 @@ def scenario_no_permission(args):
             tap(check)
         btn = find_text(r"^update now$", timeout=60)
     if btn is None:
-        record("C needs permission", False, "no 'Update now'")
+        record("C needs permission", False, "no 'Update now'" + note)
         return
+    respect_silent_update_gap()  # so the prompt comes from the missing permission, not the gap
     tap(btn)
     end, f = time.time() + 120, ""
     while time.time() < end:
@@ -168,7 +213,7 @@ def scenario_no_permission(args):
     shown = bool(re.search(r"packageinstaller|permissioncontroller|com\.android\.settings", f, re.I))
     still_old = version_code() == args.old_code
     record("C needs permission", shown and still_old,
-           f"system prompt {'shown' if shown else 'NOT shown'} ({f[:160]}), version {version_code()}")
+           f"system prompt {'shown' if shown else 'NOT shown'} ({f[:160]}), version {version_code()}" + note)
     sh("input keyevent KEYCODE_BACK")
 
 

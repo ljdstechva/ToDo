@@ -12,6 +12,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,14 +38,18 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null && wantsSettings(intent)) openSettingsRequest++
 
         setContent {
             val data by Repo.data.collectAsStateWithLifecycle()
             TodoTheme(dynamicColor = data.settings.dynamicColor) {
                 val nav = rememberNavController()
+                // Saved with the screen, so a recreation during start-up (a configuration change)
+                // neither loses an "open Settings" launch nor repeats it later.
+                var launchHandled by rememberSaveable { mutableStateOf(false) }
                 LaunchedEffect(openSettingsRequest) {
-                    if (openSettingsRequest > 0 && nav.currentDestination?.route != SETTINGS) {
+                    val fromLaunch = !launchHandled && wantsSettings(intent)
+                    launchHandled = true
+                    if ((fromLaunch || openSettingsRequest > 0) && nav.currentDestination?.route != SETTINGS) {
                         nav.navigate(SETTINGS) { launchSingleTop = true }
                     }
                 }
