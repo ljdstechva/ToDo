@@ -193,6 +193,7 @@ def scenario_manual(args):
         record("B manual update", False, "no 'Update now' after checking" + note)
         return
     respect_silent_update_gap()
+    btn = find_text(r"^update now$", timeout=30) or btn  # again: a system dialog may have covered it meanwhile
     tap(btn)
     ok = wait_for_version(args.new_code, timeout=300)
     if ok:
@@ -215,6 +216,7 @@ def scenario_no_permission(args):
         record("C needs permission", False, "no 'Update now'" + note)
         return
     respect_silent_update_gap()  # so the prompt comes from the missing permission, not the gap
+    btn = find_text(r"^update now$", timeout=30) or btn
     tap(btn)
     end, f = time.time() + 120, ""
     while time.time() < end:
