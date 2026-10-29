@@ -62,12 +62,26 @@ def ui_nodes():
     return []
 
 
+ANR = re.compile(r"isn.t responding", re.I)
+
+
 def find_text(pattern, timeout=30):
     rx = re.compile(pattern, re.I)
     end = time.time() + timeout
     while time.time() < end:
-        for n in ui_nodes():
-            label = n.get("text") or n.get("content-desc") or ""
+        nodes = ui_nodes()
+        labels = [n.get("text") or n.get("content-desc") or "" for n in nodes]
+        if any(ANR.search(l) for l in labels):
+            # A slow emulator's "Pixel Launcher isn't responding" covers the app (and the UI dump).
+            wait = next((n for n, l in zip(nodes, labels) if re.fullmatch(r"wait", l, re.I)), None)
+            log(f"Closing a system dialog: {next(l for l in labels if ANR.search(l))}")
+            if wait is not None:
+                tap(wait)
+            else:
+                sh("input keyevent KEYCODE_BACK")
+            time.sleep(1)
+            continue
+        for n, label in zip(nodes, labels):
             if rx.search(label):
                 return n
         time.sleep(1)

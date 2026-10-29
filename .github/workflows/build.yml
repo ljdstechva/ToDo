@@ -9,6 +9,8 @@ name: Build, test and release
 on:
   push:
     branches: [main]
+    # Docs and the update test change nothing on the phone: no new release for them.
+    paths-ignore: ["**.md", "ci/update_e2e.py", ".github/workflows/update-test.yml"]
   pull_request:
   workflow_dispatch:
 
