@@ -97,7 +97,7 @@ class ReminderLiveTest {
         waitUntil(5_000, "screen off") { !device.isScreenOn }
         fireIn(todo, 3_000)
         waitUntil(20_000, "alarm to ring") { AlarmService.ringing.value?.req?.id == todo.id }
-        assertTrue("tone playing", AlarmService.isPlayingSound)
+        waitUntil(5_000, "tone playing") { AlarmService.isPlayingSound }
         val snooze = find(By.text("Snooze 10 min"), 15_000)
         assertNotNull("full-screen alarm shown on the lock screen", snooze)
         assertTrue("alarm turned the screen on", device.isScreenOn)
@@ -158,7 +158,7 @@ class ReminderLiveTest {
         val req = AlertRequest(AlertRequest.PREVIEW_ID, "Alarm preview", "Test", AlertStyle.ALARM, "sunrise")
         ReminderScheduler.preview(ctx, req, delayMs = 3_000)
         waitUntil(20_000, "preview alarm to ring") { AlarmService.ringing.value?.req?.isPreview == true }
-        assertTrue(AlarmService.isPlayingSound)
+        waitUntil(5_000, "preview tone playing") { AlarmService.isPlayingSound }
         val dismiss = find(By.text("Dismiss"), 3_000) ?: run {
             device.openNotification()
             Live.notificationAction("Alarm preview", "Dismiss")

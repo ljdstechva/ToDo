@@ -136,7 +136,8 @@ object Notifications {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
-            .setSilent(true)
+            // No setSilent(): NotificationCompat makes a silent notification "group alert summary",
+            // and Android then refuses its full-screen intent. The channel itself has no sound.
             .setFullScreenIntent(fullScreen, true)
             .setContentIntent(fullScreen)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
