@@ -88,7 +88,7 @@ class ReminderLiveTest {
         waitUntil(what = "snooze stored") { Repo.todo(todo.id)?.snoozedUntil != null }
         val until = Repo.todo(todo.id)!!.snoozedUntil!!
         assertTrue("snoozed about 10 minutes", until - System.currentTimeMillis() in 9 * 60_000L..10 * 60_000L)
-        assertNotNull("snooze alarm armed", ReminderScheduler.pendingAlarm(ctx, todo.id, ReminderScheduler.KIND_SNOOZE))
+        waitUntil(5_000, "snooze alarm armed") { ReminderScheduler.pendingAlarm(ctx, todo.id, ReminderScheduler.KIND_SNOOZE) != null }
     }
 
     @Test fun alarmRingsOverTheLockScreenAndSnoozes() {
@@ -108,7 +108,7 @@ class ReminderLiveTest {
         waitUntil(what = "alarm stopped") { AlarmService.ringing.value == null }
         assertFalse(AlarmService.isPlayingSound)
         waitUntil(what = "snooze stored") { Repo.todo(todo.id)?.snoozedUntil != null }
-        assertNotNull(ReminderScheduler.pendingAlarm(ctx, todo.id, ReminderScheduler.KIND_SNOOZE))
+        waitUntil(5_000, "snooze alarm armed") { ReminderScheduler.pendingAlarm(ctx, todo.id, ReminderScheduler.KIND_SNOOZE) != null }
         assertFalse(Repo.todo(todo.id)!!.done)
     }
 

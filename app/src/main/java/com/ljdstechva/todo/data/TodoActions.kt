@@ -78,8 +78,9 @@ object TodoActions {
     suspend fun snooze(context: Context, id: Long): Todo? {
         val t = Repo.todo(id) ?: return null
         val at = now() + Repo.settings.snoozeMinutes * 60_000L
-        Repo.updateTodo(id) { it.copy(snoozedUntil = at) }
+        // Arm first: once the to-do shows as snoozed, its snooze alarm must already exist.
         ReminderScheduler.setAlarm(context, id, t.reminder?.style ?: AlertStyle.NOTIFICATION, at, ReminderScheduler.KIND_SNOOZE)
+        Repo.updateTodo(id) { it.copy(snoozedUntil = at) }
         Notifications.cancel(context, id)
         return Repo.todo(id)
     }
