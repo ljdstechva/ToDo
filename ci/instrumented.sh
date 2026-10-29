@@ -11,6 +11,15 @@ mkdir -p "$OUT/shots"
 API=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
 echo "Emulator API $API"
 
+# "Booted" is reported before the user is unlocked and the system has settled; alarms set in that
+# window can be lost. Wait for RUNNING_UNLOCKED, then give background boot work a moment.
+for i in $(seq 1 90); do
+  adb shell dumpsys user 2>/dev/null | grep -q "RUNNING_UNLOCKED" && break
+  sleep 2
+done
+adb shell dumpsys user | grep -m1 -oE "State: [A-Z_]+" || true
+sleep 30
+
 # Quiet, awake, unlocked phone.
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0

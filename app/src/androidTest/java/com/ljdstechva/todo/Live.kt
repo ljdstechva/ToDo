@@ -38,6 +38,9 @@ object Live {
 
     /** Saves a screenshot for the CI artifact (pulled from [SHOTS] after the run). */
     fun shot(name: String) {
+        // Compose can be idle before the frame reaches the screen (e.g. mid navigation transition).
+        device.waitForIdle()
+        Thread.sleep(700)
         shell("mkdir -p $SHOTS")
         shell("screencap -p $SHOTS/${android.os.Build.VERSION.SDK_INT}-$name.png")
     }

@@ -70,7 +70,7 @@ class ReminderLiveTest {
         val todo = add("Water the plants", daily(AlertStyle.NOTIFICATION))
         fireIn(todo)
         device.openNotification()
-        assertNotNull("reminder notification", find(By.text("Water the plants"), 20_000))
+        assertNotNull("reminder notification", find(By.text("Water the plants"), 45_000))
         shot("notification-reminder")
         Live.notificationAction("Water the plants", "Done").click()
         waitUntil(what = "to-do marked done from the notification") { Repo.todo(todo.id)?.done == true }
@@ -83,7 +83,7 @@ class ReminderLiveTest {
         val todo = add("Call the bank", daily(AlertStyle.NOTIFICATION))
         fireIn(todo)
         device.openNotification()
-        assertNotNull(find(By.text("Call the bank"), 20_000))
+        assertNotNull(find(By.text("Call the bank"), 45_000))
         Live.notificationAction("Call the bank", "Snooze 10 min").click()
         waitUntil(what = "snooze stored") { Repo.todo(todo.id)?.snoozedUntil != null }
         val until = Repo.todo(todo.id)!!.snoozedUntil!!
@@ -96,7 +96,7 @@ class ReminderLiveTest {
         device.sleep()
         waitUntil(5_000, "screen off") { !device.isScreenOn }
         fireIn(todo, 3_000)
-        waitUntil(20_000, "alarm to ring") { AlarmService.ringing.value?.req?.id == todo.id }
+        waitUntil(45_000, "alarm to ring") { AlarmService.ringing.value?.req?.id == todo.id }
         waitUntil(5_000, "tone playing") { AlarmService.isPlayingSound }
         val snooze = find(By.text("Snooze 10 min"), 15_000)
         assertNotNull("full-screen alarm shown on the lock screen", snooze)
@@ -117,7 +117,7 @@ class ReminderLiveTest {
         device.sleep()
         waitUntil(5_000, "screen off") { !device.isScreenOn }
         fireIn(todo, 3_000)
-        waitUntil(20_000, "alarm to ring") { AlarmService.ringing.value != null }
+        waitUntil(45_000, "alarm to ring") { AlarmService.ringing.value != null }
         val done = find(By.text("Mark done"), 15_000)
         assertNotNull("Mark done on the alarm screen", done)
         done!!.click()
@@ -128,7 +128,7 @@ class ReminderLiveTest {
     @Test fun alarmWhileUsingThePhoneCanBeDismissedFromTheNotification() {
         val todo = add("Stretch", daily(AlertStyle.ALARM, tone = "phone"))
         fireIn(todo)
-        waitUntil(20_000, "alarm to ring") { AlarmService.ringing.value != null }
+        waitUntil(45_000, "alarm to ring") { AlarmService.ringing.value != null }
         assertEquals("Stretch", AlarmService.ringing.value!!.req.title)
         Thread.sleep(1_000)
         shot("alarm-unlocked")
@@ -149,7 +149,7 @@ class ReminderLiveTest {
         val req = AlertRequest(AlertRequest.PREVIEW_ID, "Preview check", "Test · Every day at 9:00 AM", AlertStyle.NOTIFICATION, "classic")
         ReminderScheduler.preview(ctx, req, delayMs = 3_000)
         device.openNotification()
-        assertNotNull("preview notification", find(By.text("Preview check"), 20_000))
+        assertNotNull("preview notification", find(By.text("Preview check"), 45_000))
         shot("preview-notification")
     }
 
@@ -157,7 +157,7 @@ class ReminderLiveTest {
         val before = Repo.data.value.todos
         val req = AlertRequest(AlertRequest.PREVIEW_ID, "Alarm preview", "Test", AlertStyle.ALARM, "sunrise")
         ReminderScheduler.preview(ctx, req, delayMs = 3_000)
-        waitUntil(20_000, "preview alarm to ring") { AlarmService.ringing.value?.req?.isPreview == true }
+        waitUntil(45_000, "preview alarm to ring") { AlarmService.ringing.value?.req?.isPreview == true }
         waitUntil(5_000, "preview tone playing") { AlarmService.isPlayingSound }
         val dismiss = find(By.text("Dismiss"), 3_000) ?: run {
             device.openNotification()
@@ -174,7 +174,7 @@ class ReminderLiveTest {
         assertTrue(Repo.todo(todo.id)!!.done)
         assertNotNull("still scheduled while done", ReminderScheduler.pendingAlarm(ctx, todo.id))
         fireIn(todo)
-        waitUntil(20_000, what = "to-do reopened") { Repo.todo(todo.id)?.done == false }
+        waitUntil(45_000, what = "to-do reopened") { Repo.todo(todo.id)?.done == false }
         val next = Repo.todo(todo.id)!!.nextAt!!
         assertTrue("next reminder is in the future", next > System.currentTimeMillis())
     }
