@@ -10,6 +10,7 @@ import com.ljdstechva.todo.data.Repo
 import com.ljdstechva.todo.data.TodoActions
 import com.ljdstechva.todo.update.Updater
 import com.ljdstechva.todo.update.UpdateWorker
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Re-arms all reminders after a reboot, a clock / time-zone change or an app update. */
@@ -34,13 +35,19 @@ class BootReceiver : BroadcastReceiver() {
             if (action == Intent.ACTION_MY_PACKAGE_REPLACED) {
                 Updater.clearDownloads(context)
                 UpdateWorker.schedule(context, Repo.settings.autoUpdate)
-                Notifications.showUpdate(
-                    context,
-                    title = "To-Do updated to ${BuildConfig.VERSION_NAME}",
-                    text = "Tap to open. Your to-dos and reminders are kept.",
-                    intent = Notifications.openAppIntent(context),
-                )
+                showUpdated(context)
+                // Android clears the app's notifications after stopping the old version, and that
+                // can land just after this post (seen on Android 16). Check once and post again.
+                delay(4_000)
+                if (!Notifications.isShowing(context, Notifications.UPDATE_ID)) showUpdated(context)
             }
         }
+
+        private fun showUpdated(context: Context) = Notifications.showUpdate(
+            context,
+            title = "To-Do updated to ${BuildConfig.VERSION_NAME}",
+            text = "Tap to open. Your to-dos and reminders are kept.",
+            intent = Notifications.openAppIntent(context),
+        )
     }
 }

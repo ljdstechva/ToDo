@@ -161,4 +161,7 @@ object Notifications {
     }
 
     fun cancelUpdate(context: Context) = NotificationManagerCompat.from(context).cancel(UPDATE_ID)
+
+    fun isShowing(context: Context, id: Int): Boolean =
+        context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == id }
 }
