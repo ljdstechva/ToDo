@@ -1,12 +1,16 @@
 package com.ljdstechva.todo
 
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -17,8 +21,12 @@ import com.ljdstechva.todo.Live.ctx
 import com.ljdstechva.todo.Live.shot
 import com.ljdstechva.todo.data.AlertStyle
 import com.ljdstechva.todo.data.Repeat
+import com.ljdstechva.todo.data.Reminder
 import com.ljdstechva.todo.data.Repo
+import com.ljdstechva.todo.data.ThemeMode
+import com.ljdstechva.todo.data.TodoActions
 import com.ljdstechva.todo.reminder.ReminderScheduler
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -28,6 +36,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.time.LocalDate
 
 /** The everyday flow through the real screens: add, set a reminder, check off, swipe away, undo. */
 @OptIn(ExperimentalTestApi::class)
@@ -116,6 +125,42 @@ class UiFlowTest {
         rule.onNodeWithText("Reliable reminders").performScrollTo()
         rule.waitForIdle()
         shot("ui-settings")
+    }
+
+    /** Brightness of the screen background at the left gutter, middle height (0 black, 1 white). */
+    private fun backgroundLuminance(): Float {
+        rule.waitForIdle()
+        val px = rule.onRoot().captureToImage().toPixelMap()
+        return px[4, px.height / 2].luminance()
+    }
+
+    @Test fun darkThemeFromSettings() {
+        runBlocking {
+            val today = LocalDate.now().toEpochDay()
+            TodoActions.add(ctx, "Water the plants", "", null, Reminder(AlertStyle.NOTIFICATION, Repeat.DAILY, 9, 0, today))
+            val paid = TodoActions.add(ctx, "Pay electricity", "", null, Reminder(AlertStyle.ALARM, Repeat.MONTHLY, 8, 30, today, monthDay = 15))
+            TodoActions.add(ctx, "Buy rice", "", null, null)
+            TodoActions.setDone(ctx, paid.id, true)
+        }
+        assertTrue("starts light (emulator default)", backgroundLuminance() > 0.6f)
+
+        rule.onNodeWithTag("settingsButton").performClick()
+        rule.waitUntilExactlyOneExists(hasTestTag("theme-DARK"), 5_000)
+        rule.onNodeWithTag("theme-DARK").performScrollTo().performClick()
+        rule.waitUntil(5_000) { Repo.settings.theme == ThemeMode.DARK }
+        assertTrue("settings turned dark", backgroundLuminance() < 0.2f)
+        shot("ui-dark-settings")
+
+        rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        rule.waitUntilExactlyOneExists(hasTestTag("addButton"), 5_000)
+        assertTrue("home is dark too", backgroundLuminance() < 0.2f)
+        shot("ui-dark-home")
+
+        rule.onNodeWithTag("settingsButton").performClick()
+        rule.waitUntilExactlyOneExists(hasTestTag("theme-LIGHT"), 5_000)
+        rule.onNodeWithTag("theme-LIGHT").performScrollTo().performClick()
+        rule.waitUntil(5_000) { Repo.settings.theme == ThemeMode.LIGHT }
+        assertTrue("back to light", backgroundLuminance() > 0.6f)
     }
 
     @Test fun categoriesGroupToDos() {

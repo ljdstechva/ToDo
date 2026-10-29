@@ -5,6 +5,10 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class AlertStyle { NOTIFICATION, ALARM }
 
+/** Light or dark screens; SYSTEM follows the phone's own dark theme setting. */
+@Serializable
+enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
+
 @Serializable
 enum class Repeat(val label: String) {
     ONCE("Once"),
@@ -70,6 +74,7 @@ data class AppSettings(
     val autoUpdate: Boolean = true,
     val lastUpdateCheck: Long = 0,
     val dynamicColor: Boolean = false,
+    val theme: ThemeMode = ThemeMode.SYSTEM,
 )
 
 @Serializable

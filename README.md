@@ -14,6 +14,7 @@ A small, fast to-do app for Android 8 to Android 16 with reminders that really r
   sunrise (both start soft and get louder), plus the phone's own alarm sound.
 - **Test it in 5 seconds** button in the editor, to hear and see a reminder before saving.
 - A repeating to-do you checked off comes back when its next reminder is due.
+- **Dark mode:** Settings → Appearance → System, Light or Dark.
 - **Updates itself** from this repo's GitHub releases (Settings → Updates).
 
 ## Install on your phone

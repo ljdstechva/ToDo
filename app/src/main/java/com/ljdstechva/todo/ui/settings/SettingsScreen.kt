@@ -34,8 +34,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,6 +50,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -75,6 +81,7 @@ import com.ljdstechva.todo.AppScope
 import com.ljdstechva.todo.BuildConfig
 import com.ljdstechva.todo.data.AppData
 import com.ljdstechva.todo.data.AppSettings
+import com.ljdstechva.todo.data.ThemeMode
 import com.ljdstechva.todo.data.TodoActions
 import com.ljdstechva.todo.reminder.ReminderScheduler
 import com.ljdstechva.todo.reminder.Tones
@@ -147,6 +154,32 @@ fun SettingsScreen(data: AppData, onBack: () -> Unit) {
                     Column {
                         ClickRow("From", Fmt.minutesOfDay(context, s.quietStartMinute)) { quietPicker = "start" }
                         ClickRow("Until", Fmt.minutesOfDay(context, s.quietEndMinute)) { quietPicker = "end" }
+                    }
+                }
+            }
+
+            Card("Appearance") {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Theme", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(8.dp))
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        ThemeMode.entries.forEachIndexed { i, mode ->
+                            SegmentedButton(
+                                selected = s.theme == mode,
+                                onClick = { update { it.copy(theme = mode) } },
+                                shape = SegmentedButtonDefaults.itemShape(i, ThemeMode.entries.size),
+                                icon = { Icon(mode.icon(), contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                modifier = Modifier.testTag("theme-${mode.name}"),
+                            ) { Text(mode.label) }
+                        }
+                    }
+                    if (s.theme == ThemeMode.SYSTEM) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Follows your phone's dark theme setting.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
                 if (Build.VERSION.SDK_INT >= 31) {
@@ -293,6 +326,12 @@ private fun UpdatesCard(s: AppSettings, onAutoUpdate: (Boolean) -> Unit) {
             tag = "autoUpdateSwitch",
         )
     }
+}
+
+private fun ThemeMode.icon() = when (this) {
+    ThemeMode.SYSTEM -> Icons.Rounded.BrightnessAuto
+    ThemeMode.LIGHT -> Icons.Rounded.LightMode
+    ThemeMode.DARK -> Icons.Rounded.DarkMode
 }
 
 private fun sizeText(bytes: Long) = if (bytes > 0) " (%.1f MB)".format(bytes / 1_048_576.0) else ""

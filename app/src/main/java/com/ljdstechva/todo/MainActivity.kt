@@ -1,14 +1,18 @@
 package com.ljdstechva.todo
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -21,6 +25,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.ljdstechva.todo.data.Repo
+import com.ljdstechva.todo.data.ThemeMode
 import com.ljdstechva.todo.data.TodoActions
 import com.ljdstechva.todo.ui.categories.CategoriesScreen
 import com.ljdstechva.todo.ui.home.HomeScreen
@@ -41,7 +46,20 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val data by Repo.data.collectAsStateWithLifecycle()
-            TodoTheme(dynamicColor = data.settings.dynamicColor) {
+            val dark = when (data.settings.theme) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            // Status and navigation bar icons follow the app's theme, which may differ from the phone's.
+            DisposableEffect(dark) {
+                enableEdgeToEdge(
+                    statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+                    navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM) { dark },
+                )
+                onDispose {}
+            }
+            TodoTheme(dark = dark, dynamicColor = data.settings.dynamicColor) {
                 val nav = rememberNavController()
                 // Saved with the screen, so a recreation during start-up (a configuration change)
                 // neither loses an "open Settings" launch nor repeats it later.
@@ -94,6 +112,9 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN = "open"
         const val OPEN_SETTINGS = "settings"
+        // The scrims enableEdgeToEdge() uses by default for 3-button navigation.
+        private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
+        private val DARK_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
         private const val HOME = "home"
         private const val SETTINGS = "settings"
         private const val CATEGORIES = "categories"
