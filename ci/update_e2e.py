@@ -8,7 +8,7 @@ release from GitHub by itself:
   C. without "install unknown apps" allowed: the app must hand over to the system prompt
 Then, with --new-apk, checks the Home screen widget on the release build (which, unlike the debug
 build of the live tests, is shrunk by R8):
-  D. add a to-do, add the widget from Settings, tick the to-do off on the Home screen
+  D. add the widget from Settings, add a to-do with its +, tick the to-do off on the Home screen
 
     python3 ci/update_e2e.py --old-apk old.apk --old-code 5 --new-code 6 [--new-apk new.apk] --out out
 """
@@ -296,38 +296,39 @@ def scenario_widget(args):
     adb("uninstall", PKG)
     adb("install", "-g", args.new_apk, check=True, timeout=300)
     sh(f"cmd deviceidle whitelist +{PKG}")
-    sh(f"am start -W -n {PKG}/.MainActivity")
-    fab = find_text(r"^new to-do$", timeout=30)
-    if fab is None:
-        shot("D1-app")
+
+    def fail(name, why):
+        shot(name)
         labels = sorted({n.get("text") or n.get("content-desc") or "" for n in ui_nodes()} - {""})
-        record("D widget on the release build", False, f"no 'New to-do' button; screen shows {labels[:15]}; last dump error: {dump_error[-200:]!r}")
-        return
-    tap(fab)
-    time.sleep(2)  # the title field takes the focus
-    sh("input text " + title.replace(" ", "%s"))
-    save = find_text(r"^save$", timeout=10)
-    if save is not None:
-        tap(save)
-    if find_text(rf"^{title}$", timeout=10) is None:
-        shot("D1-app")
-        record("D widget on the release build", False, "could not add a to-do")
-        return
+        record("D widget on the release build", False, f"{why}; screen shows {labels[:15]}")
 
     open_settings()
     add_widget = scroll_to_text(r"^add the widget$")
     if add_widget is None:
-        shot("D2-settings")
-        record("D widget on the release build", False, "Settings has no 'Add the widget'")
-        return
+        return fail("D1-settings", "Settings has no 'Add the widget'")
     tap(add_widget)
     confirm = find_text(r"^(add to home ?screen|add automatically|add)$", timeout=15)
-    shot("D2-pin-dialog")
     if confirm is None:
-        record("D widget on the release build", False, "the launcher did not offer to add the widget")
-        return
+        return fail("D1-pin-dialog", "the launcher did not offer to add the widget")
+    shot("D1-pin-dialog")
     tap(confirm)
     time.sleep(3)
+
+    # The widget's + opens the app on a new to-do. (uiautomator dumps show no label for the
+    # app's own "New to-do" button, so the to-do is made from the widget.)
+    sh("input keyevent KEYCODE_HOME")
+    plus = find_on_home(lambda n, label: label.lower() == "new to-do")
+    if plus is None:
+        return fail("D2-home", "the widget's + is not on the Home screen")
+    tap(plus)
+    time.sleep(3)  # the app opens and the title field takes the focus
+    sh("input text " + title.replace(" ", "%s"))
+    save = find_text(r"^save$", timeout=10)
+    if save is None:
+        return fail("D2-new-todo", "no Save button")
+    tap(save)
+    if find_text(rf"^{title}$", timeout=10) is None:
+        return fail("D2-new-todo", "could not add a to-do")
 
     sh("input keyevent KEYCODE_HOME")
     box = widget_checkbox(title)
@@ -346,9 +347,10 @@ def scenario_widget(args):
     sh(f"am start -W -n {PKG}/.MainActivity")
     in_app = find_text(r"^completed · 1$", timeout=15) is not None
     shot("D4-app")
+    seen = "" if in_app else f" (screen shows {sorted({n.get('text') or n.get('content-desc') or '' for n in ui_nodes()} - {''})[:15]})"
     record("D widget on the release build", was == "false" and ticked and in_app,
            f"checkbox {was} -> {'checked' if ticked else 'NOT checked'}, app shows it "
-           f"{'done' if in_app else 'NOT done'}")
+           f"{'done' if in_app else 'NOT done'}{seen}")
 
 
 def main():
