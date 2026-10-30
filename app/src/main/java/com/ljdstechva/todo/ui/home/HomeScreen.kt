@@ -103,6 +103,8 @@ import com.ljdstechva.todo.data.Reminder
 import com.ljdstechva.todo.data.Repeat
 import com.ljdstechva.todo.data.Todo
 import com.ljdstechva.todo.data.TodoActions
+import com.ljdstechva.todo.data.doneInOrder
+import com.ljdstechva.todo.data.openInOrder
 import com.ljdstechva.todo.ui.Fmt
 import com.ljdstechva.todo.ui.components.AnimatedCheck
 import com.ljdstechva.todo.ui.components.CategoryDialog
