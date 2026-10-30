@@ -164,7 +164,8 @@ private fun Content(context: Context, data: AppData) {
                 startIcon = ImageProvider(R.drawable.ic_stat_todo),
                 title = context.getString(R.string.app_name),
                 iconColor = GlanceTheme.colors.primary,
-                modifier = GlanceModifier.clickable(openApp(context)),
+                // The title bar has no end inset of its own; without one the + touches the edge.
+                modifier = GlanceModifier.clickable(openApp(context)).padding(top = 4.dp, end = 8.dp),
             ) {
                 if (summary.isNotEmpty()) {
                     Text(
@@ -179,7 +180,6 @@ private fun Content(context: Context, data: AppData) {
                     onClick = openApp(context, NEW_TODO),
                     backgroundColor = GlanceTheme.colors.primary,
                     contentColor = GlanceTheme.colors.onPrimary,
-                    modifier = GlanceModifier.padding(end = 4.dp),
                 )
             }
         },
