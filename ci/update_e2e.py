@@ -53,14 +53,24 @@ def shot(name):
     adb("pull", "/data/local/tmp/u.png", f"{OUT}/{name}.png")
 
 
+# What the last failed UI dump said, for the report.
+dump_error = ""
+
+
 def ui_nodes():
+    global dump_error
     for _ in range(5):
-        out = sh("uiautomator dump /data/local/tmp/ui.xml >/dev/null 2>&1; cat /data/local/tmp/ui.xml")
-        if out.strip().startswith("<?xml"):
+        # Remove the last dump first: a failed dump would otherwise read the previous screen's.
+        out = sh("rm -f /data/local/tmp/ui.xml; uiautomator dump /data/local/tmp/ui.xml 2>&1; echo '<<<'; cat /data/local/tmp/ui.xml 2>/dev/null")
+        status, _, xml = out.partition("<<<")
+        if "<hierarchy" in xml:
             try:
-                return list(ET.fromstring(out[out.index("<hierarchy"):]).iter("node"))
+                return list(ET.fromstring(xml[xml.index("<hierarchy"):]).iter("node"))
             except (ET.ParseError, ValueError):
                 pass
+        if status.strip() != dump_error:
+            dump_error = status.strip()
+            log(f"UI dump failed: {dump_error[-300:]}")
         time.sleep(1)
     return []
 
@@ -290,7 +300,8 @@ def scenario_widget(args):
     fab = find_text(r"^new to-do$", timeout=30)
     if fab is None:
         shot("D1-app")
-        record("D widget on the release build", False, "no 'New to-do' button")
+        labels = sorted({n.get("text") or n.get("content-desc") or "" for n in ui_nodes()} - {""})
+        record("D widget on the release build", False, f"no 'New to-do' button; screen shows {labels[:15]}; last dump error: {dump_error[-200:]!r}")
         return
     tap(fab)
     time.sleep(2)  # the title field takes the focus
