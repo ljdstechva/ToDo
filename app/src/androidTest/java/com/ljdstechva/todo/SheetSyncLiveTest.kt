@@ -1,6 +1,5 @@
 package com.ljdstechva.todo
 
-import android.content.Intent
 import android.util.Log
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -15,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
@@ -158,11 +158,11 @@ class SheetSyncLiveTest {
         Thread.sleep(600) // the strike-through animation, for the screenshot
         shot("sheet-ticked-off")
 
-        // A new line while the app is in the background comes in when it is opened again.
+        // A new line while the app is in the background comes in when it is opened again. (Through
+        // the scenario: a startActivity() of our own leaves it unable to close the activity.)
         sheet.lines = listOf(HAULER, PERMIT)
-        device.pressHome()
-        device.waitForIdle()
-        ctx.startActivity(Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        rule.activityRule.scenario.moveToState(Lifecycle.State.CREATED) // stopped, as after Home
+        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         Live.waitUntil(30_000, "the new line after opening the app") { synced().any { it.title == PERMIT.what } }
         rule.waitUntilExactlyOneExists(hasText(PERMIT.what), 5_000)
         shot("sheet-synced-on-open")
