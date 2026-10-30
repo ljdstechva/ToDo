@@ -402,12 +402,28 @@ def scenario_sheet(args):
     if connect is None:
         return fail("E1-settings", "Settings has no 'Connect a Google Sheet'")
     tap(connect)
-    field = find_node(lambda n, _: n.get("class") == "android.widget.EditText", timeout=10)
-    if field is None:
-        return fail("E1-dialog", "the connect dialog has no link field")
-    tap(field)
-    time.sleep(1)
-    sh(f"input text '{args.sheet_url}'")
+    # The emulator's keyboard once dropped the link's last characters (API 36, run 24), so the
+    # field is read back and typed again until it holds the whole link.
+    def is_field(n, _):
+        return n.get("class") == "android.widget.EditText"
+    typed = None
+    for _ in range(3):
+        field = find_node(is_field, timeout=10)
+        if field is None:
+            return fail("E1-dialog", "the connect dialog has no link field")
+        tap(field)
+        time.sleep(1)
+        sh("input keyevent KEYCODE_MOVE_END")
+        sh("input keyevent " + " ".join(["KEYCODE_DEL"] * (len(args.sheet_url) + 20)))
+        sh(f"input text '{args.sheet_url}'")
+        time.sleep(2)
+        field = find_node(is_field, timeout=5)
+        typed = field.get("text") if field is not None else None
+        if typed == args.sheet_url:
+            break
+        log(f"The link field reads {typed!r}; typing it again")
+    else:
+        return fail("E1-dialog", f"could not type the link (the field reads {typed!r})")
     button = find_text(r"^connect$", timeout=10)
     if button is None:
         return fail("E1-dialog", "no Connect button")
