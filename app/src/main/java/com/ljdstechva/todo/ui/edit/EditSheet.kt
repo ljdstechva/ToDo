@@ -1,7 +1,11 @@
 package com.ljdstechva.todo.ui.edit
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -47,6 +51,7 @@ import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -113,6 +118,7 @@ import com.ljdstechva.todo.ui.components.CategoryDialog
 import com.ljdstechva.todo.ui.components.ColorDot
 import com.ljdstechva.todo.ui.components.SectionLabel
 import com.ljdstechva.todo.ui.components.TimeDialog
+import com.ljdstechva.todo.ui.components.sheetGreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -249,6 +255,7 @@ fun EditSheet(
                 )
                 Button(onClick = { save() }, enabled = draft.title.isNotBlank(), modifier = Modifier.testTag("saveButton")) { Text("Save") }
             }
+            if (todo?.sheetKey != null) SheetBanner(data.sheet.name, todo.sheetLink ?: data.sheet.url.ifBlank { null })
             OutlinedTextField(
                 value = draft.title,
                 onValueChange = { draft.title = it },
@@ -618,5 +625,45 @@ fun TonePicker(selected: String, preview: TonePreview, onSelect: (String) -> Uni
                 }
             }
         }
+    }
+}
+
+/** Says the to-do came from the Google Sheet, and opens its row there. */
+@Composable
+private fun SheetBanner(sheetName: String, link: String?) {
+    val context = LocalContext.current
+    val green = sheetGreen()
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = green.copy(alpha = 0.12f),
+        modifier = Modifier.fillMaxWidth().testTag("sheetBanner"),
+    ) {
+        Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.TableChart, contentDescription = null, tint = green, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (sheetName.isBlank()) "From your Google Sheet" else "From your Google Sheet ($sheetName)",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "Ticked off here when it's done there",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (link != null) {
+                TextButton(onClick = { openInSheets(context, link) }, modifier = Modifier.testTag("openInSheet")) { Text("Open") }
+            }
+        }
+    }
+}
+
+private fun openInSheets(context: Context, link: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, link, Toast.LENGTH_LONG).show()
     }
 }

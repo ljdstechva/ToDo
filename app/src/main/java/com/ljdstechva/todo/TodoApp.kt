@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.util.Log
 import com.ljdstechva.todo.data.Repo
 import com.ljdstechva.todo.reminder.Notifications
+import com.ljdstechva.todo.sheet.SheetSync
+import com.ljdstechva.todo.sheet.SheetSyncWorker
 import com.ljdstechva.todo.update.UpdateWorker
 import com.ljdstechva.todo.update.Updater
 import com.ljdstechva.todo.widget.TodoWidget
@@ -27,6 +29,7 @@ class TodoApp : Application() {
         Notifications.createChannels(this)
         AppVisibility.register(this)
         UpdateWorker.schedule(this, Repo.settings.autoUpdate)
+        if (SheetSync.connected) SheetSyncWorker.schedule(this)
         // The Home screen widget shows the list: redraw it whenever what it shows changes.
         AppScope.launch {
             Repo.data

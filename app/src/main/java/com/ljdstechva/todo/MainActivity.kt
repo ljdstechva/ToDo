@@ -27,6 +27,8 @@ import androidx.navigation.compose.rememberNavController
 import com.ljdstechva.todo.data.Repo
 import com.ljdstechva.todo.data.ThemeMode
 import com.ljdstechva.todo.data.TodoActions
+import com.ljdstechva.todo.sheet.SheetSync
+import com.ljdstechva.todo.sheet.SheetSyncWorker
 import com.ljdstechva.todo.ui.categories.CategoriesScreen
 import com.ljdstechva.todo.ui.home.HomeScreen
 import com.ljdstechva.todo.ui.home.NEW_TODO
@@ -117,6 +119,8 @@ class MainActivity : ComponentActivity() {
         Updater.checkOnLaunch(applicationContext)
         // Cheap and idempotent: repairs alarms the system dropped (force stop, clock change, ...).
         AppScope.launch { TodoActions.rescheduleAll(applicationContext) }
+        // New lines on the Google Sheet show up when the app is opened, not 15 minutes later.
+        if (SheetSync.connected) SheetSyncWorker.runNow(applicationContext)
     }
 
     companion object {

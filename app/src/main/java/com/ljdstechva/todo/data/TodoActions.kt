@@ -26,11 +26,23 @@ object TodoActions {
         return reschedule(context, created!!.id) ?: created!!
     }
 
-    /** Saves an edited to-do. A changed reminder drops any pending snooze. */
+    /**
+     * Saves an edited to-do's title, note, category and reminder. The rest stays as saved, so a
+     * tick from the widget or the Google Sheet while the editor was open is kept. A changed
+     * reminder drops any pending snooze.
+     */
     suspend fun save(context: Context, todo: Todo): Todo? {
         val old = Repo.todo(todo.id)
         val reminderChanged = old?.reminder != todo.reminder
-        Repo.update { d -> d.copy(todos = d.todos.map { if (it.id == todo.id) todo.copy(snoozedUntil = if (reminderChanged) null else it.snoozedUntil) else it }) }
+        Repo.updateTodo(todo.id) {
+            it.copy(
+                title = todo.title,
+                note = todo.note,
+                categoryId = todo.categoryId,
+                reminder = todo.reminder,
+                snoozedUntil = if (reminderChanged) null else it.snoozedUntil,
+            )
+        }
         if (reminderChanged) ReminderScheduler.cancel(context, todo.id, ReminderScheduler.KIND_SNOOZE)
         return reschedule(context, todo.id)
     }
@@ -46,7 +58,7 @@ object TodoActions {
 
     suspend fun delete(context: Context, id: Long): Todo? {
         val t = Repo.todo(id) ?: return null
-        Repo.update { d -> d.copy(todos = d.todos.filterNot { it.id == id }) }
+        Repo.update { d -> d.copy(todos = d.todos.filterNot { it.id == id }).forgetSheetLines(listOf(t)) }
         ReminderScheduler.cancelAll(context, id)
         Notifications.cancel(context, id)
         return t
@@ -57,7 +69,7 @@ object TodoActions {
         val gone = Repo.data.value.todos.filter(predicate)
         if (gone.isEmpty()) return gone
         val ids = gone.map { it.id }.toSet()
-        Repo.update { d -> d.copy(todos = d.todos.filterNot { it.id in ids }) }
+        Repo.update { d -> d.copy(todos = d.todos.filterNot { it.id in ids }).forgetSheetLines(gone) }
         gone.forEach {
             ReminderScheduler.cancelAll(context, it.id)
             Notifications.cancel(context, it.id)
@@ -70,7 +82,8 @@ object TodoActions {
         if (todos.isEmpty()) return
         Repo.update { d ->
             val present = d.todos.map { it.id }.toSet()
-            d.copy(todos = d.todos + todos.filterNot { it.id in present })
+            val keys = todos.mapNotNull { it.sheetKey }.toSet()
+            d.copy(todos = d.todos + todos.filterNot { it.id in present }, sheet = d.sheet.copy(removed = d.sheet.removed - keys))
         }
         todos.forEach { reschedule(context, it.id) }
     }
@@ -124,6 +137,12 @@ object TodoActions {
                 }
             }
         }
+    }
+
+    /** Deleted to-dos from the Google Sheet: the sync must not bring their lines back. */
+    private fun AppData.forgetSheetLines(gone: List<Todo>): AppData {
+        val keys = gone.mapNotNull { it.sheetKey }
+        return if (keys.isEmpty()) this else copy(sheet = sheet.copy(removed = sheet.removed + keys))
     }
 
     suspend fun addCategory(name: String, color: Int): Category {

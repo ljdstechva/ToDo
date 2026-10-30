@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -49,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -81,13 +83,17 @@ import com.ljdstechva.todo.AppScope
 import com.ljdstechva.todo.BuildConfig
 import com.ljdstechva.todo.data.AppData
 import com.ljdstechva.todo.data.AppSettings
+import com.ljdstechva.todo.data.Repo
 import com.ljdstechva.todo.data.ThemeMode
 import com.ljdstechva.todo.data.TodoActions
 import com.ljdstechva.todo.reminder.ReminderScheduler
 import com.ljdstechva.todo.reminder.Tones
 import com.ljdstechva.todo.reminder.rememberTonePreview
+import com.ljdstechva.todo.sheet.SheetMerge
+import com.ljdstechva.todo.sheet.SheetSync
 import com.ljdstechva.todo.ui.Fmt
 import com.ljdstechva.todo.ui.components.TimeDialog
+import com.ljdstechva.todo.ui.components.sheetGreen
 import com.ljdstechva.todo.ui.edit.TonePicker
 import com.ljdstechva.todo.update.Updater
 import com.ljdstechva.todo.widget.TodoWidget
@@ -203,6 +209,8 @@ fun SettingsScreen(data: AppData, onBack: () -> Unit) {
                     }
                 }
             }
+
+            SheetCard(data)
 
             ReliabilityCard()
 
@@ -338,6 +346,161 @@ private fun UpdatesCard(s: AppSettings, onAutoUpdate: (Boolean) -> Unit) {
         )
     }
 }
+
+/** Settings > Google Sheet: connect the sheet's web app, see how the last sync went. */
+@Composable
+private fun SheetCard(data: AppData) {
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    val running by SheetSync.running.collectAsStateWithLifecycle()
+    var connectDialog by remember { mutableStateOf(false) }
+    var disconnectDialog by remember { mutableStateOf(false) }
+    val sheet = data.sheet
+
+    Card("Google Sheet") {
+        if (data.settings.sheetUrl.isBlank()) {
+            ClickRow(
+                "Connect a Google Sheet",
+                "Its to-do list comes in under ${SheetMerge.WORK}, and is ticked off here when it's done there",
+                tag = "sheetConnect",
+            ) { connectDialog = true }
+        } else {
+            Column(Modifier.padding(16.dp).animateContentSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.TableChart, contentDescription = null, tint = sheetGreen(), modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (sheet.name.isBlank()) "Synced with your sheet" else "Synced with ${sheet.name}",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                val status = when {
+                    running -> "Syncing…"
+                    sheet.lastSync == 0L -> "Not synced yet"
+                    else -> "${lines(sheet.openLines)} on the sheet · synced ${Fmt.moment(context, sheet.lastSync)}"
+                }
+                Text(
+                    status,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("sheetStatus"),
+                )
+                val error = sheet.lastError
+                if (error != null && !running) {
+                    Text(error, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("sheetError"))
+                }
+                if (running) LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(
+                    "Syncs about every 15 minutes and when you open the app. Changes here never go back to the sheet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { scope.launch { SheetSync.sync(context) } },
+                        enabled = !running,
+                        modifier = Modifier.testTag("sheetSyncNow"),
+                    ) { Text("Sync now") }
+                    if (sheet.url.isNotBlank()) {
+                        OutlinedButton(onClick = { openUrl(context, sheet.url) }) { Text("Open the sheet") }
+                    }
+                }
+            }
+            Divider()
+            ClickRow("Disconnect", "Stops syncing. The to-dos from the sheet stay.", tag = "sheetDisconnect") { disconnectDialog = true }
+        }
+    }
+
+    if (connectDialog) {
+        ConnectSheetDialog(running = running, onDismiss = { connectDialog = false }) { link, onError ->
+            scope.launch {
+                val error = SheetSync.connect(context, link)
+                if (error != null) {
+                    onError(error)
+                } else {
+                    connectDialog = false
+                    val n = Repo.data.value.todos.count { it.sheetKey != null && !it.done }
+                    Toast.makeText(context, "Connected. ${if (n == 0) "Nothing to do on the sheet" else "${todos(n)} from the sheet"}.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    if (disconnectDialog) {
+        AlertDialog(
+            onDismissRequest = { disconnectDialog = false },
+            title = { Text("Disconnect the sheet?") },
+            text = { Text("New lines on the sheet stop coming in. The to-dos already here stay, and you can connect again any time.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        disconnectDialog = false
+                        scope.launch { SheetSync.disconnect(context) }
+                    },
+                    modifier = Modifier.testTag("sheetDisconnectConfirm"),
+                ) { Text("Disconnect") }
+            },
+            dismissButton = { TextButton(onClick = { disconnectDialog = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun ConnectSheetDialog(running: Boolean, onDismiss: () -> Unit, onConnect: (link: String, onError: (String) -> Unit) -> Unit) {
+    val context = LocalContext.current
+    var link by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = { if (!running) onDismiss() },
+        title = { Text("Connect a Google Sheet") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Once, in the sheet on a computer:", style = MaterialTheme.typography.bodyMedium)
+                listOf(
+                    "Extensions > Apps Script. Paste the To-Do script and save.",
+                    "Deploy > New deployment > Web app. Execute as: Me. Who has access: Anyone.",
+                    "Copy the web app link (it ends in /exec) and paste it below.",
+                ).forEachIndexed { i, step ->
+                    Text("${i + 1}. $step", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(onClick = { openUrl(context, "https://github.com/${Updater.REPO}#google-sheet-sync") }) {
+                    Text("The script and the full steps")
+                }
+                val shownError = error
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = {
+                        link = it
+                        error = null
+                    },
+                    label = { Text("Web app link") },
+                    placeholder = { Text("https://script.google.com/macros/s/…/exec") },
+                    isError = shownError != null,
+                    supportingText = if (shownError != null) {
+                        { Text(shownError, modifier = Modifier.testTag("sheetConnectError")) }
+                    } else {
+                        null
+                    },
+                    maxLines = 3,
+                    enabled = !running,
+                    modifier = Modifier.fillMaxWidth().testTag("sheetUrlField"),
+                )
+                if (running) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConnect(link) { error = it } },
+                enabled = !running && link.isNotBlank(),
+                modifier = Modifier.testTag("sheetConnectButton"),
+            ) { Text(if (running) "Connecting…" else "Connect") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !running) { Text("Cancel") } },
+    )
+}
+
+private fun lines(n: Int) = if (n == 1) "1 line" else "$n lines"
+
+private fun todos(n: Int) = if (n == 1) "1 to-do" else "$n to-dos"
 
 private fun ThemeMode.icon() = when (this) {
     ThemeMode.SYSTEM -> Icons.Rounded.BrightnessAuto

@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "sheet": "Sample sheet",
+  "url": "https://github.com/ljdstechva/ToDo/tree/main/sheet-sync",
+  "count": 2,
+  "items": [
+    {
+      "where": "🪨 Materials · row 5",
+      "date": "Oct 1, 2026",
+      "amount": "₱1,000.00",
+      "what": "💵 Awaiting payment · Sample Client · Sand",
+      "link": null
+    },
+    {
+      "where": "🤝 Funds · row 3",
+      "date": "Oct 2, 2026",
+      "amount": "₱250.50",
+      "what": "⏳ To return · Sample Hauler",
+      "link": null
+    }
+  ]
+}

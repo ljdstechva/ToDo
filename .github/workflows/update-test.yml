@@ -1,7 +1,7 @@
 # After a release: installs the previous release on emulators and checks that the app updates
 # itself to the new one (automatically in the background, from Settings, and through the system
-# prompt when "install unknown apps" is not allowed yet), then checks the Home screen widget on the
-# new release build. Publishes nothing.
+# prompt when "install unknown apps" is not allowed yet), then checks the Home screen widget and the
+# Google Sheet sync on the new release build. Publishes nothing.
 name: Update test
 
 on:

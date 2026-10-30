@@ -71,6 +71,9 @@ jobs:
           keytool -list -keystore "$KS" -storepass "$RELEASE_KEYSTORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS" > /dev/null
           echo "RELEASE_KEYSTORE_PATH=$KS" >> "$GITHUB_ENV"
 
+      - name: Google Sheet script test
+        run: node sheet-sync/test.js
+
       - name: Unit tests and APKs
         env:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}

@@ -54,6 +54,12 @@ data class Todo(
     /** Next scheduled reminder (epoch millis), kept for display; the alarm itself is in AlarmManager. */
     val nextAt: Long? = null,
     val snoozedUntil: Long? = null,
+    /** Set on a to-do that comes from the Google Sheet: the sync's key for its line there. */
+    val sheetKey: String? = null,
+    /** Opens the line's row in the sheet. */
+    val sheetLink: String? = null,
+    /** Ticked off by the sync because the line left the sheet; it reopens if the line comes back. */
+    val sheetDone: Boolean = false,
 )
 
 @Serializable
@@ -75,6 +81,41 @@ data class AppSettings(
     val lastUpdateCheck: Long = 0,
     val dynamicColor: Boolean = false,
     val theme: ThemeMode = ThemeMode.SYSTEM,
+    /** The Google Sheet's web app link; empty when no sheet is connected. */
+    val sheetUrl: String = "",
+)
+
+/** One line of the sheet's to-do list, as its web app sends it. */
+@Serializable
+data class SheetLine(
+    val where: String = "",
+    val date: String = "",
+    val amount: String = "",
+    val what: String = "",
+    val link: String? = null,
+)
+
+/** What the sheet's web app answers. [count] is how many lines the sheet says it has. */
+@Serializable
+data class SheetResponse(
+    val ok: Boolean = false,
+    val error: String? = null,
+    val sheet: String = "",
+    val url: String = "",
+    val count: Int? = null,
+    val items: List<SheetLine> = emptyList(),
+)
+
+/** How the Google Sheet sync went last time, and the lines the user deleted from the app. */
+@Serializable
+data class SheetState(
+    val name: String = "",
+    val url: String = "",
+    val lastSync: Long = 0,
+    val lastError: String? = null,
+    val openLines: Int = 0,
+    /** Keys of lines deleted here while still on the sheet: the sync does not bring them back. */
+    val removed: Set<String> = emptySet(),
 )
 
 @Serializable
@@ -83,6 +124,7 @@ data class AppData(
     val categories: List<Category> = emptyList(),
     val settings: AppSettings = AppSettings(),
     val nextId: Long = 1,
+    val sheet: SheetState = SheetState(),
 )
 
 const val DEFAULT_TONE = "classic"

@@ -9,6 +9,8 @@ release from GitHub by itself:
 Then, with --new-apk, checks the Home screen widget on the release build (which, unlike the debug
 build of the live tests, is shrunk by R8):
   D. add the widget from Settings, add a to-do with its +, tick the to-do off on the Home screen
+  E. connect a Google Sheet (sheet-sync/sample.json stands in for the sheet's web app): its lines
+     come in, marked "Google Sheet" in the app and on the widget
 
     python3 ci/update_e2e.py --old-apk old.apk --old-code 5 --new-code 6 [--new-apk new.apk] --out out
 """
@@ -353,13 +355,64 @@ def scenario_widget(args):
            f"{'done' if in_app else 'NOT done'}{seen}")
 
 
+SAMPLE_SHEET = "https://raw.githubusercontent.com/ljdstechva/ToDo/main/sheet-sync/sample.json"
+
+
+def labels_now():
+    return sorted({n.get("text") or n.get("content-desc") or "" for n in ui_nodes()} - {""})
+
+
+def scenario_sheet(args):
+    """Runs after D, on the same install (the widget is on the Home screen)."""
+    name = "E Google Sheet on the release build"
+
+    def fail(shot_name, why):
+        shot(shot_name)
+        record(name, False, f"{why}; screen shows {labels_now()[:15]}")
+
+    open_settings()
+    connect = scroll_to_text(r"^connect a google sheet$")
+    if connect is None:
+        return fail("E1-settings", "Settings has no 'Connect a Google Sheet'")
+    tap(connect)
+    field = find_node(lambda n, _: n.get("class") == "android.widget.EditText", timeout=10)
+    if field is None:
+        return fail("E1-dialog", "the connect dialog has no link field")
+    tap(field)
+    time.sleep(1)
+    sh(f"input text '{args.sheet_url}'")
+    button = find_text(r"^connect$", timeout=10)
+    if button is None:
+        return fail("E1-dialog", "no Connect button")
+    shot("E1-dialog")
+    tap(button)
+    if find_text(r"^sync now$", timeout=30) is None:
+        return fail("E2-connect", "did not connect")
+    status = find_text(r"lines? on the sheet", timeout=15)
+    shot("E2-connected")
+
+    sh("input keyevent KEYCODE_BACK")
+    row = find_text(r"sample client", timeout=15)
+    badge = find_text(r"google sheet", timeout=5)
+    shot("E3-app")
+    sh("input keyevent KEYCODE_HOME")
+    on_widget = find_on_home(lambda n, label: "sample client" in label.lower()) is not None
+    widget_badge = find_text(r"^google sheet$", timeout=5) is not None
+    shot("E4-widget")
+    record(name, row is not None and badge is not None and on_widget and widget_badge,
+           f"status {status.get('text') if status is not None else 'NOT shown'}; app: line "
+           f"{'shown' if row is not None else 'NOT shown'}, badge {'shown' if badge is not None else 'NOT shown'}; "
+           f"widget: line {'shown' if on_widget else 'NOT shown'}, badge {'shown' if widget_badge else 'NOT shown'}")
+
+
 def main():
     global OUT
     p = argparse.ArgumentParser()
     p.add_argument("--old-apk", required=True)
     p.add_argument("--old-code", type=int, required=True)
     p.add_argument("--new-code", type=int, required=True)
-    p.add_argument("--new-apk", help="the new release, for the widget check")
+    p.add_argument("--new-apk", help="the new release, for the widget and Google Sheet checks")
+    p.add_argument("--sheet-url", default=SAMPLE_SHEET, help="a web app answer for the Google Sheet check")
     p.add_argument("--out", default="out")
     args = p.parse_args()
     OUT = args.out
@@ -382,7 +435,7 @@ def main():
     try:
         scenarios = [scenario_auto, scenario_manual, scenario_no_permission]
         if args.new_apk:
-            scenarios.append(scenario_widget)
+            scenarios += [scenario_widget, scenario_sheet]
         for scenario in scenarios:
             try:
                 scenario(args)
@@ -390,7 +443,7 @@ def main():
                 record(scenario.__name__, False, f"crashed: {e}")
     finally:
         logcat.terminate()
-    subprocess.run(f"grep -E 'Updater|InstallResult|UpdateWorker|PackageInstaller|AndroidRuntime' {OUT}/logcat.txt > {OUT}/logcat-app.txt",
+    subprocess.run(f"grep -E 'Updater|InstallResult|UpdateWorker|SheetSync|PackageInstaller|AndroidRuntime' {OUT}/logcat.txt > {OUT}/logcat-app.txt",
                    shell=True)
 
     lines = [f"## Update test on API {api}: {args.old_code} → {args.new_code}", ""]
