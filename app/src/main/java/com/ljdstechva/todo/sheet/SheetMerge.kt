@@ -132,7 +132,7 @@ object SheetMerge {
     private fun clean(s: String) = s.replace(Regex("""\s+"""), " ").trim()
 
     private val dayCount = Regex(
-        """\b\d+\s*(?:days?|weeks?|months?|hours?|hrs?|minutes?|mins?)\b|\b(?:today|yesterday|tomorrow)\b""",
+        """\b\d+\s*(?:days?|weeks?|months?|hours?|hrs?|minutes?|mins?)(?:\s+ago)?\b|\b(?:today|yesterday|tomorrow)\b""",
         RegexOption.IGNORE_CASE,
     )
 
