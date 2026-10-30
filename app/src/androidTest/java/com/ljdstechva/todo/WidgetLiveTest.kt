@@ -7,6 +7,7 @@ import android.text.Spanned
 import android.text.style.StrikethroughSpan
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -78,10 +79,10 @@ class WidgetLiveTest {
 
         // What the launcher is sent: the done to-do crossed out, the others not, the next reminder shown.
         var texts = renderedTexts()
-        assertEquals("Buy milk crossed out", true, texts["Buy milk"])
-        assertEquals("Feed the cat not crossed out", false, texts["Feed the cat"])
-        assertEquals("Renew the permit not crossed out", false, texts["Renew the permit"])
-        assertTrue("next reminder shown: ${texts.keys}", texts.keys.any { it.startsWith("Tomorrow") })
+        expect("Buy milk crossed out", texts["Buy milk"] == true, texts)
+        expect("Feed the cat not crossed out", texts["Feed the cat"] == false, texts)
+        expect("Renew the permit not crossed out", texts["Renew the permit"] == false, texts)
+        expect("next reminder shown", texts.keys.any { it.startsWith("Tomorrow") }, texts)
 
         // Settings > Add the widget > the launcher's "Add to home screen".
         ctx.startActivity(appIntent().putExtra(MainActivity.EXTRA_OPEN, MainActivity.OPEN_SETTINGS))
@@ -104,14 +105,15 @@ class WidgetLiveTest {
         Live.waitUntil(10_000, "the to-do to be done in the app") { Repo.todo(feed.id)?.done == true }
         Live.waitUntil(10_000, "the widget to show it ticked") { checkbox("Feed the cat").isChecked }
         texts = renderedTexts()
-        assertEquals("Feed the cat crossed out", true, texts["Feed the cat"])
+        expect("Feed the cat crossed out", texts["Feed the cat"] == true, texts)
         shot("widget-ticked")
 
         // And back on.
         checkbox("Feed the cat").click()
         Live.waitUntil(10_000, "the to-do to be open again") { Repo.todo(feed.id)?.done == false }
         Live.waitUntil(10_000, "the widget to show it unticked") { !checkbox("Feed the cat").isChecked }
-        assertEquals("Feed the cat no longer crossed out", false, renderedTexts()["Feed the cat"])
+        texts = renderedTexts()
+        expect("Feed the cat no longer crossed out", texts["Feed the cat"] == false, texts)
 
         // + opens the app on a new to-do.
         onHome(By.desc("New to-do")).click()
@@ -124,6 +126,14 @@ class WidgetLiveTest {
         rule.waitUntilExactlyOneExists(hasTestTag("titleField") and hasText("Renew the permit"), 10_000)
         shot("widget-open-todo")
         assertEquals("nothing else changed", false, Repo.todo(permit.id)?.done)
+        assertTrue("What the widget drew:\n" + problems.joinToString("\n"), problems.isEmpty())
+    }
+
+    /** Drawing problems; the test still goes on to the Home screen and reports them all at the end. */
+    private val problems = mutableListOf<String>()
+
+    private fun expect(what: String, ok: Boolean, texts: Map<String, Boolean>) {
+        if (!ok) problems += "$what; texts (crossed out?): $texts"
     }
 
     private fun appIntent() = Intent(ctx, MainActivity::class.java)
@@ -170,17 +180,13 @@ class WidgetLiveTest {
         Live.instrumentation.runOnMainSync {
             val root = FrameLayout(ctx)
             root.addView(views.apply(ctx, root))
-            val px = { dp: Int -> (dp * ctx.resources.displayMetrics.density).toInt() }
-            root.measure(
-                View.MeasureSpec.makeMeasureSpec(px(320), View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(px(480), View.MeasureSpec.EXACTLY),
-            )
-            root.layout(0, 0, root.measuredWidth, root.measuredHeight) // lays out the list rows too
             fun walk(v: View) {
                 if (v is TextView && v.text.isNotEmpty()) {
                     val t = v.text
                     texts[t.toString()] = t is Spanned && t.getSpans(0, t.length, StrikethroughSpan::class.java).isNotEmpty()
                 }
+                // The list's rows only become views when a launcher scrolls them in: ask its adapter.
+                if (v is AdapterView<*>) v.adapter?.let { a -> for (i in 0 until a.count) walk(a.getView(i, null, v)) }
                 if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
             }
             walk(root)
