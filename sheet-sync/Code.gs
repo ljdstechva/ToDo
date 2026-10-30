@@ -60,19 +60,19 @@ function cellLink(rich, formula) {
  * none; the app only ticks off lines that left the sheet when it got that many lines.
  */
 function parseTodos(values, links, baseUrl) {
-  var title = -1;
-  for (var r = 0; r < values.length && title < 0; r++) {
-    if (/TO-?DO/i.test(firstCell(values[r]))) title = r;
-  }
   var header = -1;
-  for (r = title < 0 ? 0 : title + 1; r < values.length && header < 0; r++) {
+  for (var r = 0; r < values.length && header < 0; r++) {
     if (/^where\b/i.test(firstCell(values[r]))) header = r;
   }
-  var count = null;
-  var stated = title < 0 ? '' : firstCell(values[title]);
-  var m = /(\d+)\s+items?\b/i.exec(stated);
-  if (m) count = Number(m[1]);
-  else if (/\b(no|nothing|zero)\b/i.test(stated)) count = 0;
+  // The list's title is the to-do row nearest above its header: the page's subtitle at the top
+  // ("Your to-do list, Maribank, ...") says to-do too. With no header (an empty list), it is the
+  // to-do row that states how many lines there are.
+  var title = -1;
+  for (r = (header < 0 ? values.length : header) - 1; r >= 0 && title < 0; r--) {
+    var text = firstCell(values[r]);
+    if (/TO-?DO/i.test(text) && (header >= 0 || countOf(text) !== null)) title = r;
+  }
+  var count = title < 0 ? null : countOf(firstCell(values[title]));
   // An empty list may have no header row at all.
   if (header < 0 && count === 0) return { ok: true, count: 0, items: [] };
   if (header < 0) throw new Error('No to-do list on the Overview tab (no header row starting with "Where")');
@@ -107,6 +107,14 @@ function parseTodos(values, links, baseUrl) {
     });
   }
   return { ok: true, count: count, items: items };
+}
+
+/** "4 items need your attention" -> 4, "nothing needs your attention" -> 0, else null. */
+function countOf(text) {
+  var m = /(\d+)\s+items?\b/i.exec(text);
+  if (m) return Number(m[1]);
+  if (/\b(no|nothing|zero|none)\b|\ball (clear|done)\b/i.test(text)) return 0;
+  return null;
 }
 
 function firstCell(row) {

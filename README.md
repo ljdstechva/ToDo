@@ -52,6 +52,8 @@ The app can follow the **TO-DO & NOTIFICATIONS** list on the Overview tab of a G
   its row in Google Sheets;
 - a line that leaves the sheet (it was settled) is **ticked off** in the app; if it comes back,
   the to-do reopens;
+- a line whose wording changes by itself ("last balance check was 8 days ago", then "9 days
+  ago") stays one to-do, and its title follows the sheet unless you renamed it;
 - what you do in the app stays in the app: ticking off, editing or deleting a synced to-do never
   changes the sheet, and a to-do you deleted does not come back while its line is still there.
 

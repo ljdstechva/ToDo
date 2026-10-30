@@ -34,12 +34,13 @@ object SheetMerge {
 
     /**
      * A line's identity across syncs: where (without its row number, which shifts when a line
-     * above is settled), date, amount and what. Two equal lines get #2, #3, ... in sheet order.
+     * above is settled), date, amount and what (without day counts like "8 days ago", which
+     * change by themselves). Two equal lines get #2, #3, ... in sheet order.
      */
     fun keys(lines: List<SheetLine>): List<String> {
         val seen = HashMap<String, Int>()
         return lines.map { line ->
-            val base = listOf(stripRow(line.where), line.date, line.amount, line.what).joinToString("|") { clean(it) }
+            val base = listOf(stripRow(line.where), clean(line.date), clean(line.amount), steady(line.what)).joinToString("|")
             val n = (seen[base] ?: 0) + 1
             seen[base] = n
             if (n == 1) base else "$base#$n"
@@ -71,10 +72,14 @@ object SheetMerge {
             when {
                 i >= 0 -> {
                     val link = lines[i].link ?: t.sheetLink
+                    // Reworded on the sheet ("8 days ago" is now "9 days ago"): follow it, unless
+                    // the title was changed here.
+                    val text = clean(lines[i].what)
+                    val title = if (t.title != text && steady(t.title) == steady(text)) text else t.title
                     if (t.done && t.sheetDone) {
-                        t.copy(done = false, doneAt = null, sheetDone = false, sheetLink = link).also { reopened += it }
+                        t.copy(title = title, done = false, doneAt = null, sheetDone = false, sheetLink = link).also { reopened += it }
                     } else {
-                        t.copy(sheetLink = link)
+                        t.copy(title = title, sheetLink = link)
                     }
                 }
                 complete && !t.done -> t.copy(done = true, doneAt = now, sheetDone = true, snoozedUntil = null).also { ticked += it }
@@ -125,4 +130,12 @@ object SheetMerge {
     private fun stripRow(where: String) = clean(where).replace(Regex("""\s*·\s*row\s*\d+\s*$""", RegexOption.IGNORE_CASE), "")
 
     private fun clean(s: String) = s.replace(Regex("""\s+"""), " ").trim()
+
+    private val dayCount = Regex(
+        """\b\d+\s*(?:days?|weeks?|months?|hours?|hrs?|minutes?|mins?)\b|\b(?:today|yesterday|tomorrow)\b""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** The text without the parts that change by themselves from day to day. */
+    private fun steady(what: String) = clean(what).replace(dayCount, "#")
 }

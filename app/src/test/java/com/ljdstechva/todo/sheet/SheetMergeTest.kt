@@ -128,6 +128,23 @@ class SheetMergeTest {
         assertEquals("https://s/#gid=1&range=A4", r.data.byTitle(sand.what).sheetLink)
     }
 
+    @Test fun aLineWhoseDayCountGoesUpStaysOneToDo() {
+        val check = SheetLine("🏦 Bank · row 11", "Oct 22, 2026", "₱1,234.56", "🏦 Last balance check was 8 days ago · type today’s balance")
+        val once = SheetMerge.merge(start, response(check), now = 1000).data
+        val nextDay = check.copy(what = "🏦 Last balance check was 9 days ago · type today’s balance")
+        val r = SheetMerge.merge(once, response(nextDay), now = 2000)
+        assertTrue(r.added.isEmpty() && r.ticked.isEmpty())
+        assertEquals(nextDay.what, r.data.synced().single().title)
+        // Checked: "today" now.
+        val checked = SheetMerge.merge(r.data, response(check.copy(what = "🏦 Last balance check was today · type today’s balance")), now = 3000)
+        assertTrue(checked.added.isEmpty() && checked.ticked.isEmpty())
+        // A title changed here is kept.
+        val renamed = once.copy(todos = once.todos.map { if (it.sheetKey != null) it.copy(title = "Check the bank") else it })
+        assertEquals("Check the bank", SheetMerge.merge(renamed, response(nextDay), now = 2000).data.synced().single().title)
+        // Other numbers still tell lines apart.
+        assertTrue(SheetMerge.merge(once, response(check.copy(amount = "₱999.00")), now = 2000).added.size == 1)
+    }
+
     @Test fun twoEqualLinesAreTwoToDos() {
         val r = SheetMerge.merge(start, response(hauler, hauler), now = 1000)
         assertEquals(2, r.added.size)

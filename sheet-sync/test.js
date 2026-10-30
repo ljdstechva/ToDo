@@ -42,6 +42,15 @@ assert.strictEqual(out.items[0].link, null);
 out = parse([pad(['🔔 TO-DO & NOTIFICATIONS · nothing needs your attention']), rows[6], rows[7]], null, BASE);
 assert.deepStrictEqual(out, { ok: true, count: 0, items: [] });
 
+// The page's subtitle says "to-do" too: the count still comes from the list's own title.
+const subtitle = pad(['Your to-do list, the bank and every business on one page  ·  pick a period']);
+out = parse([pad(['  📊  Overview']), subtitle, ...rows], links, BASE);
+assert.strictEqual(out.count, 2);
+assert.strictEqual(out.items.length, 2);
+out = parse([subtitle, pad(['🔔 TO-DO & NOTIFICATIONS · nothing needs your attention']), rows[6]], null, BASE);
+assert.deepStrictEqual(out, { ok: true, count: 0, items: [] });
+assert.throws(() => gs.parseTodos([subtitle, rows[6], rows[7]], null, BASE), /No to-do list/);
+
 // A header with an empty first row: no lines, count as stated.
 out = parse([rows[2], rows[3], pad(['✅ All clear']), rows[6]], null, BASE);
 assert.strictEqual(out.items.length, 0);
