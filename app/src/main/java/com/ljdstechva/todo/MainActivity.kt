@@ -29,6 +29,7 @@ import com.ljdstechva.todo.data.ThemeMode
 import com.ljdstechva.todo.data.TodoActions
 import com.ljdstechva.todo.ui.categories.CategoriesScreen
 import com.ljdstechva.todo.ui.home.HomeScreen
+import com.ljdstechva.todo.ui.home.NEW_TODO
 import com.ljdstechva.todo.ui.settings.SettingsScreen
 import com.ljdstechva.todo.ui.theme.TodoTheme
 import com.ljdstechva.todo.update.Updater
@@ -36,8 +37,8 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    /** Bumped when a notification asks for the Settings screen while the app is already open. */
-    private var openSettingsRequest by mutableIntStateOf(0)
+    /** Bumped when a notification or the widget asks for a screen while the app is already open. */
+    private var openRequest by mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -64,11 +65,20 @@ class MainActivity : ComponentActivity() {
                 // Saved with the screen, so a recreation during start-up (a configuration change)
                 // neither loses an "open Settings" launch nor repeats it later.
                 var launchHandled by rememberSaveable { mutableStateOf(false) }
-                LaunchedEffect(openSettingsRequest) {
-                    val fromLaunch = !launchHandled && wantsSettings(intent)
+                // A to-do the widget asked for, until the home screen has opened it.
+                var openTodo by rememberSaveable { mutableStateOf<Long?>(null) }
+                LaunchedEffect(openRequest) {
+                    val fromLaunch = !launchHandled
                     launchHandled = true
-                    if ((fromLaunch || openSettingsRequest > 0) && nav.currentDestination?.route != SETTINGS) {
-                        nav.navigate(SETTINGS) { launchSingleTop = true }
+                    if (!fromLaunch && openRequest == 0) return@LaunchedEffect
+                    when (intent.getStringExtra(EXTRA_OPEN)) {
+                        OPEN_SETTINGS -> if (nav.currentDestination?.route != SETTINGS) {
+                            nav.navigate(SETTINGS) { launchSingleTop = true }
+                        }
+                        OPEN_TODO -> {
+                            nav.popBackStack(HOME, inclusive = false)
+                            openTodo = intent.getLongExtra(EXTRA_TODO_ID, NEW_TODO)
+                        }
                     }
                 }
                 val duration = 380
@@ -85,6 +95,8 @@ class MainActivity : ComponentActivity() {
                             data = data,
                             onOpenSettings = { nav.navigate(SETTINGS) { launchSingleTop = true } },
                             onOpenCategories = { nav.navigate(CATEGORIES) { launchSingleTop = true } },
+                            openTodo = openTodo,
+                            onOpenTodoHandled = { openTodo = null },
                         )
                     }
                     composable(SETTINGS) { SettingsScreen(data = data, onBack = { nav.popBackStack() }) }
@@ -97,7 +109,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (wantsSettings(intent)) openSettingsRequest++
+        if (intent.hasExtra(EXTRA_OPEN)) openRequest++
     }
 
     override fun onStart() {
@@ -107,11 +119,12 @@ class MainActivity : ComponentActivity() {
         AppScope.launch { TodoActions.rescheduleAll(applicationContext) }
     }
 
-    private fun wantsSettings(intent: Intent?) = intent?.getStringExtra(EXTRA_OPEN) == OPEN_SETTINGS
-
     companion object {
         const val EXTRA_OPEN = "open"
         const val OPEN_SETTINGS = "settings"
+        /** Opens the to-do in [EXTRA_TODO_ID] ([NEW_TODO] or missing: a new one). */
+        const val OPEN_TODO = "todo"
+        const val EXTRA_TODO_ID = "todoId"
         // The scrims enableEdgeToEdge() uses by default for 3-button navigation.
         private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
         private val DARK_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)

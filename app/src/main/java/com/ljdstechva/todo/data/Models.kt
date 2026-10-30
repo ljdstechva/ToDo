@@ -86,3 +86,10 @@ data class AppData(
 )
 
 const val DEFAULT_TONE = "classic"
+
+/** Open to-dos in the order every list shows them: next reminder first, then oldest first. */
+fun List<Todo>.openInOrder(): List<Todo> =
+    filter { !it.done }.sortedWith(compareBy<Todo> { it.nextAt ?: Long.MAX_VALUE }.thenBy { it.createdAt })
+
+/** Done to-dos, most recently ticked off first. */
+fun List<Todo>.doneInOrder(): List<Todo> = filter { it.done }.sortedByDescending { it.doneAt ?: 0 }

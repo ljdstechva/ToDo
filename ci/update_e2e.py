@@ -6,8 +6,11 @@ release from GitHub by itself:
   A. automatic: open the app, leave it, the update installs in the background
   B. manual: Settings > Update now
   C. without "install unknown apps" allowed: the app must hand over to the system prompt
+Then, with --new-apk, checks the Home screen widget on the release build (which, unlike the debug
+build of the live tests, is shrunk by R8):
+  D. add a to-do, add the widget from Settings, tick the to-do off on the Home screen
 
-    python3 ci/update_e2e.py --old-apk old.apk --old-code 5 --new-code 6 --out out
+    python3 ci/update_e2e.py --old-apk old.apk --old-code 5 --new-code 6 [--new-apk new.apk] --out out
 """
 import argparse
 import re
@@ -67,6 +70,11 @@ ANR = re.compile(r"isn.t responding", re.I)
 
 def find_text(pattern, timeout=30):
     rx = re.compile(pattern, re.I)
+    return find_node(lambda n, label: rx.search(label), timeout)
+
+
+def find_node(match, timeout=30):
+    """First node for which match(node, its text or description) is true."""
     end = time.time() + timeout
     while time.time() < end:
         nodes = ui_nodes()
@@ -82,7 +90,7 @@ def find_text(pattern, timeout=30):
             time.sleep(1)
             continue
         for n, label in zip(nodes, labels):
-            if rx.search(label):
+            if match(n, label):
                 return n
         time.sleep(1)
     return None
@@ -233,12 +241,112 @@ def scenario_no_permission(args):
     sh("input keyevent KEYCODE_BACK")
 
 
+def screen_size():
+    m = re.search(r"(\d+)x(\d+)", sh("wm size"))
+    return (int(m.group(1)), int(m.group(2))) if m else (1080, 2400)
+
+
+def scroll_to_text(pattern, tries=8):
+    w, h = screen_size()
+    for _ in range(tries):
+        n = find_text(pattern, timeout=2)
+        if n is not None:
+            return n
+        sh(f"input swipe {w // 2} {h * 3 // 4} {w // 2} {h // 4} 400")
+    return None
+
+
+def find_on_home(match):
+    """The launcher puts a new widget on the first Home screen page with room for it."""
+    n = find_node(match, timeout=5)
+    if n is not None:
+        return n
+    w, h = screen_size()
+    sh("input keyevent KEYCODE_HOME")
+    sh("input keyevent KEYCODE_HOME")  # the second press goes to the first page
+    for _ in range(4):
+        n = find_node(match, timeout=3)
+        if n is not None:
+            return n
+        sh(f"input swipe {w * 9 // 10} {h // 2} {w // 10} {h // 2} 300")
+    return None
+
+
+def widget_checkbox(title):
+    """The widget's checkbox for a to-do: it carries the title as its description."""
+    row = find_on_home(lambda n, _: (n.get("content-desc") or "").lower() == title.lower())
+    if row is None:
+        return None
+    return next((c for c in row.iter("node") if c.get("checkable") == "true"), row)
+
+
+def scenario_widget(args):
+    title = "Widget check"
+    sh(f"am force-stop {PKG}")
+    adb("uninstall", PKG)
+    adb("install", "-g", args.new_apk, check=True, timeout=300)
+    sh(f"cmd deviceidle whitelist +{PKG}")
+    sh(f"am start -W -n {PKG}/.MainActivity")
+    fab = find_text(r"^new to-do$", timeout=30)
+    if fab is None:
+        shot("D1-app")
+        record("D widget on the release build", False, "no 'New to-do' button")
+        return
+    tap(fab)
+    time.sleep(2)  # the title field takes the focus
+    sh("input text " + title.replace(" ", "%s"))
+    save = find_text(r"^save$", timeout=10)
+    if save is not None:
+        tap(save)
+    if find_text(rf"^{title}$", timeout=10) is None:
+        shot("D1-app")
+        record("D widget on the release build", False, "could not add a to-do")
+        return
+
+    open_settings()
+    add_widget = scroll_to_text(r"^add the widget$")
+    if add_widget is None:
+        shot("D2-settings")
+        record("D widget on the release build", False, "Settings has no 'Add the widget'")
+        return
+    tap(add_widget)
+    confirm = find_text(r"^(add to home ?screen|add automatically|add)$", timeout=15)
+    shot("D2-pin-dialog")
+    if confirm is None:
+        record("D widget on the release build", False, "the launcher did not offer to add the widget")
+        return
+    tap(confirm)
+    time.sleep(3)
+
+    sh("input keyevent KEYCODE_HOME")
+    box = widget_checkbox(title)
+    if box is None:
+        shot("D3-home")
+        record("D widget on the release build", False, "widget not found on the Home screen")
+        return
+    was = box.get("checked")
+    tap(box)
+    end, ticked = time.time() + 20, False
+    while time.time() < end and not ticked:
+        time.sleep(2)
+        box = widget_checkbox(title)
+        ticked = box is not None and box.get("checked") == "true"
+    shot("D3-widget-ticked")
+    sh(f"am start -W -n {PKG}/.MainActivity")
+    in_app = find_text(r"^completed · 1$", timeout=15) is not None
+    shot("D4-app")
+    record("D widget on the release build", was == "false" and ticked and in_app,
+           f"checkbox {was} -> {'checked' if ticked else 'NOT checked'}, app shows it "
+           f"{'done' if in_app else 'NOT done'}")
+
+
 def main():
     global OUT
     p = argparse.ArgumentParser()
     p.add_argument("--old-apk", required=True)
     p.add_argument("--old-code", type=int, required=True)
     p.add_argument("--new-code", type=int, required=True)
+    p.add_argument("--new-apk", help="the new release, for the widget check")
     p.add_argument("--out", default="out")
     args = p.parse_args()
     OUT = args.out
@@ -259,7 +367,10 @@ def main():
     adb("logcat", "-c")
     logcat = subprocess.Popen(["adb", "logcat", "-v", "time"], stdout=open(f"{OUT}/logcat.txt", "w"), stderr=subprocess.STDOUT)
     try:
-        for scenario in (scenario_auto, scenario_manual, scenario_no_permission):
+        scenarios = [scenario_auto, scenario_manual, scenario_no_permission]
+        if args.new_apk:
+            scenarios.append(scenario_widget)
+        for scenario in scenarios:
             try:
                 scenario(args)
             except Exception as e:  # keep going: one broken scenario must not hide the others

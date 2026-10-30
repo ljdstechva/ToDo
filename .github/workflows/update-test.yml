@@ -1,6 +1,7 @@
 # After a release: installs the previous release on emulators and checks that the app updates
 # itself to the new one (automatically in the background, from Settings, and through the system
-# prompt when "install unknown apps" is not allowed yet). Publishes nothing.
+# prompt when "install unknown apps" is not allowed yet), then checks the Home screen widget on the
+# new release build. Publishes nothing.
 name: Update test
 
 on:
@@ -43,7 +44,9 @@ jobs:
           fi
           NEW=${TAGS[0]}; OLD=${TAGS[1]}
           gh release download "$OLD" --pattern "*.apk" --dir old
+          gh release download "$NEW" --pattern "*.apk" --dir new
           echo "old_apk=$(ls old/*.apk | head -n1)" >> "$GITHUB_OUTPUT"
+          echo "new_apk=$(ls new/*.apk | head -n1)" >> "$GITHUB_OUTPUT"
           echo "old_code=${OLD##*.}" >> "$GITHUB_OUTPUT"
           echo "new_code=${NEW##*.}" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -69,7 +72,7 @@ jobs:
           emulator-boot-timeout: 900
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none -camera-front none
-          script: python3 ci/update_e2e.py --old-apk "${{ steps.rel.outputs.old_apk }}" --old-code ${{ steps.rel.outputs.old_code }} --new-code ${{ steps.rel.outputs.new_code }} --out out
+          script: python3 ci/update_e2e.py --old-apk "${{ steps.rel.outputs.old_apk }}" --old-code ${{ steps.rel.outputs.old_code }} --new-code ${{ steps.rel.outputs.new_code }} --new-apk "${{ steps.rel.outputs.new_apk }}" --out out
 
       - name: Results
         if: ${{ always() && steps.rel.outputs.skip == 'false' }}

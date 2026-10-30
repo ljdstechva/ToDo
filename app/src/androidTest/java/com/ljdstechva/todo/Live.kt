@@ -71,6 +71,17 @@ object Live {
         return find(text(action), 5_000) ?: throw AssertionError("Button \"$action\" not found on \"$title\"")
     }
 
+    private val NOT_RESPONDING = Pattern.compile("(?i).*isn.t responding.*")
+
+    /** A slow emulator's "Pixel Launcher isn't responding" dialog covers the screen: close it. */
+    fun dismissSystemDialog() {
+        val title = device.findObject(By.text(NOT_RESPONDING)) ?: return
+        Log.w(TAG, "Closing a system dialog: ${title.text}")
+        val wait = device.findObject(text("Wait"))
+        if (wait != null) wait.click() else device.pressBack()
+        device.waitForIdle()
+    }
+
     fun closeShade() {
         device.pressHome()
         device.waitForIdle()

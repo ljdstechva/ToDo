@@ -90,6 +90,7 @@ import com.ljdstechva.todo.ui.Fmt
 import com.ljdstechva.todo.ui.components.TimeDialog
 import com.ljdstechva.todo.ui.edit.TonePicker
 import com.ljdstechva.todo.update.Updater
+import com.ljdstechva.todo.widget.TodoWidget
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -190,6 +191,16 @@ fun SettingsScreen(data: AppData, onBack: () -> Unit) {
                         checked = s.dynamicColor,
                         onChange = { on -> update { it.copy(dynamicColor = on) } },
                     )
+                }
+            }
+
+            Card("Home screen widget") {
+                ClickRow("Add the widget", "Tick off to-dos right from your Home screen", tag = "addWidget") {
+                    scope.launch {
+                        if (!TodoWidget.requestPin(context)) {
+                            Toast.makeText(context, "Touch and hold your Home screen, tap Widgets, then pick To-Do.", Toast.LENGTH_LONG).show()
+                        }
+                    }
                 }
             }
 
@@ -481,8 +492,12 @@ private fun Card(title: String, content: @Composable ColumnScope.() -> Unit) {
 private fun Divider() = HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
 @Composable
-private fun ClickRow(title: String, value: String, icon: Boolean = false, onClick: () -> Unit) {
-    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+private fun ClickRow(title: String, value: String, icon: Boolean = false, tag: String? = null, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = if (tag != null) Modifier.testTag(tag) else Modifier,
+    ) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge)

@@ -10,6 +10,7 @@ import com.ljdstechva.todo.data.Repo
 import com.ljdstechva.todo.data.TodoActions
 import com.ljdstechva.todo.update.Updater
 import com.ljdstechva.todo.update.UpdateWorker
+import com.ljdstechva.todo.widget.TodoWidget
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -41,6 +42,8 @@ class BootReceiver : BroadcastReceiver() {
                 delay(4_000)
                 if (!Notifications.isShowing(context, Notifications.UPDATE_ID)) showUpdated(context)
             }
+            // New day, new clock or new version: redraw the widget's "Today" labels and layout.
+            TodoWidget.refresh(context)
         }
 
         private fun showUpdated(context: Context) = Notifications.showUpdate(

@@ -77,6 +77,7 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -114,9 +115,22 @@ import kotlinx.coroutines.launch
 
 private const val ALL = -1L
 
+/** Stands for "a new to-do" where a to-do id is expected (ids start at 1). */
+const val NEW_TODO = 0L
+
+/**
+ * The list. [openTodo] is a to-do the widget asked to open ([NEW_TODO]: a new one); its sheet opens
+ * once, then [onOpenTodoHandled] is called.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(data: AppData, onOpenSettings: () -> Unit, onOpenCategories: () -> Unit) {
+fun HomeScreen(
+    data: AppData,
+    onOpenSettings: () -> Unit,
+    onOpenCategories: () -> Unit,
+    openTodo: Long? = null,
+    onOpenTodoHandled: () -> Unit = {},
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -129,6 +143,13 @@ fun HomeScreen(data: AppData, onOpenSettings: () -> Unit, onOpenCategories: () -
     val updateState by Updater.state.collectAsStateWithLifecycle()
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    LaunchedEffect(openTodo) {
+        val id = openTodo ?: return@LaunchedEffect
+        creating = id == NEW_TODO
+        editingId = id.takeIf { it != NEW_TODO }
+        onOpenTodoHandled()
+    }
+
     // A deleted category drops out of the filter.
     LaunchedEffect(data.categories, filter) {
         if (filter != ALL && data.categories.none { it.id == filter }) filter = ALL
@@ -136,8 +157,8 @@ fun HomeScreen(data: AppData, onOpenSettings: () -> Unit, onOpenCategories: () -
 
     val categories = data.categories.associateBy { it.id }
     val inView = data.todos.filter { filter == ALL || it.categoryId == filter }
-    val active = inView.filter { !it.done }.sortedWith(compareBy<Todo> { it.nextAt ?: Long.MAX_VALUE }.thenBy { it.createdAt })
-    val done = inView.filter { it.done }.sortedByDescending { it.doneAt ?: 0 }
+    val active = inView.openInOrder()
+    val done = inView.doneInOrder()
 
     fun undoable(message: String, removed: List<Todo>) {
         if (removed.isEmpty()) return
@@ -274,16 +295,19 @@ fun HomeScreen(data: AppData, onOpenSettings: () -> Unit, onOpenCategories: () -
 
     val editing = editingId?.let { id -> data.todos.firstOrNull { it.id == id } }
     if (creating || editing != null) {
-        EditSheet(
-            todo = editing,
-            defaultCategory = filter.takeIf { it != ALL },
-            data = data,
-            onDismiss = {
-                creating = false
-                editingId = null
-            },
-            onSaved = { afterSave(it) },
-        )
+        // A fresh sheet per to-do: the widget can switch to another one while a sheet is open.
+        key(editing?.id) {
+            EditSheet(
+                todo = editing,
+                defaultCategory = filter.takeIf { it != ALL },
+                data = data,
+                onDismiss = {
+                    creating = false
+                    editingId = null
+                },
+                onSaved = { afterSave(it) },
+            )
+        }
     }
     LaunchedEffect(editingId, editing) {
         if (editingId != null && editing == null) editingId = null // deleted elsewhere while open

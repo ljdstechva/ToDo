@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">To-Do</string>
+    <string name="widget_description">Tick off to-dos right from your Home screen</string>
+    <string name="widget_preview_count">2 to do</string>
+    <string name="widget_preview_1">Water the plants</string>
+    <string name="widget_preview_2">Call the bank</string>
+    <string name="widget_preview_done"><strike>Pay the electric bill</strike></string>
 </resources>

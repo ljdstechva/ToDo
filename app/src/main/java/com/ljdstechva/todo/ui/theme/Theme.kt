@@ -1,7 +1,9 @@
 package com.ljdstechva.todo.ui.theme
 
+import android.content.Context
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -52,20 +54,20 @@ private val DarkColors = darkColorScheme(
     surfaceContainerHighest = Color(0xFF35343B),
 )
 
+/** The app's colours; also used by the Home screen widget, which is drawn outside Compose UI. */
+fun todoColorScheme(context: Context, dark: Boolean, dynamicColor: Boolean): ColorScheme = when {
+    dynamicColor && Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    dark -> DarkColors
+    else -> LightColors
+}
+
 @Composable
 fun TodoTheme(
     dark: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val scheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= 31 -> {
-            val context = LocalContext.current
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        dark -> DarkColors
-        else -> LightColors
-    }
+    val scheme = todoColorScheme(LocalContext.current, dark, dynamicColor)
     MaterialTheme(colorScheme = scheme, typography = Typography(), content = content)
 }
 

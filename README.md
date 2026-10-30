@@ -15,6 +15,9 @@ A small, fast to-do app for Android 8 to Android 16 with reminders that really r
 - **Test it in 5 seconds** button in the editor, to hear and see a reminder before saving.
 - A repeating to-do you checked off comes back when its next reminder is due.
 - **Dark mode:** Settings → Appearance → System, Light or Dark.
+- **Home screen widget:** tick to-dos off right there (they cross out, as in the app); + adds
+  one and tapping a to-do opens it. Settings → Home screen widget → Add the widget, or touch
+  and hold the Home screen → Widgets → To-Do.
 - **Updates itself** from this repo's GitHub releases (Settings → Updates).
 
 ## Install on your phone
@@ -46,6 +49,8 @@ without asking (Android 12 and newer). Your to-dos and reminders are kept.
 - The alarm rings from a foreground service on the alarm volume, with vibration, and stops by
   itself after 5 minutes (leaving a "missed alarm" notification).
 - The five tones are made by `tools/make_tones.py` (no third-party audio).
+- The widget is Jetpack Glance; it redraws whenever the list changes and just after midnight
+  (for its "Today" / "Tomorrow" labels).
 
 ## Builds and tests
 
@@ -55,12 +60,13 @@ Everything builds on GitHub Actions (`.github/workflows/build.yml`):
 2. **live tests on Android 14 and Android 16 emulators** (`app/src/androidTest`): real
    notifications and alarms fire, the alarm screen appears over the lock screen, Done /
    Snooze / Dismiss work, every tone plays, alarms come back after a reboot, and the
-   add → remind → check off → swipe → undo flow through the real screens. Screenshots are in
+   add → remind → check off → swipe → undo flow through the real screens, and the widget on
+   the real Home screen (added from Settings, ticked off and on). Screenshots are in
    the `live-test-api34` / `live-test-api36` artifacts;
 3. on `main`, a release `v1.0.<run number>` with `ToDo-v1.0.<run number>.apk`.
 
 After each release, `update-test.yml` installs the previous release on the emulators and checks
-that it updates itself to the new one.
+that it updates itself to the new one, then ticks a to-do off with the widget on the new release.
 
 Releases are signed with a key kept in the repository secrets (`RELEASE_KEYSTORE_B64`,
 `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`). Keep a backup
