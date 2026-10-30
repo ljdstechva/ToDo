@@ -5,11 +5,8 @@ import android.content.ComponentName
 import android.content.Intent
 import android.text.Spanned
 import android.text.style.StrikethroughSpan
-import android.view.View
-import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.FrameLayout
-import android.widget.TextView
+import android.util.Log
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -17,9 +14,6 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
-import androidx.glance.appwidget.compose
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -35,7 +29,6 @@ import com.ljdstechva.todo.data.Reminder
 import com.ljdstechva.todo.data.Repeat
 import com.ljdstechva.todo.data.Repo
 import com.ljdstechva.todo.data.TodoActions
-import com.ljdstechva.todo.widget.TodoWidget
 import com.ljdstechva.todo.widget.TodoWidgetReceiver
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -77,13 +70,6 @@ class WidgetLiveTest {
         val permit = runBlocking { TodoActions.add(ctx, "Renew the permit", "", null, Reminder(AlertStyle.NOTIFICATION, Repeat.ONCE, 9, 0, tomorrow)) }
         runBlocking { TodoActions.add(ctx, "Buy milk", "", null, null).also { TodoActions.setDone(ctx, it.id, true) } }
 
-        // What the launcher is sent: the done to-do crossed out, the others not, the next reminder shown.
-        var texts = renderedTexts()
-        expect("Buy milk crossed out", texts["Buy milk"] == true, texts)
-        expect("Feed the cat not crossed out", texts["Feed the cat"] == false, texts)
-        expect("Renew the permit not crossed out", texts["Renew the permit"] == false, texts)
-        expect("next reminder shown", texts.keys.any { it.startsWith("Tomorrow") }, texts)
-
         // Settings > Add the widget > the launcher's "Add to home screen".
         ctx.startActivity(appIntent().putExtra(MainActivity.EXTRA_OPEN, MainActivity.OPEN_SETTINGS))
         rule.waitUntilExactlyOneExists(hasTestTag("addWidget"), 10_000)
@@ -97,23 +83,27 @@ class WidgetLiveTest {
         add.click()
         Live.waitUntil(15_000, "the widget to be placed") { widgetIds().isNotEmpty() }
 
-        // On the Home screen: tick "Feed the cat" off with its checkbox.
+        // On the Home screen: the done to-do crossed out, the others not, the next reminder shown.
         device.pressHome()
+        expect("Buy milk crossed out", crossedOutOnHome("Buy milk", true))
+        expect("Feed the cat not crossed out", crossedOutOnHome("Feed the cat", false))
+        expect("Renew the permit not crossed out", crossedOutOnHome("Renew the permit", false))
+        expect("next reminder shown", findDismissingDialogs(By.textStartsWith("Tomorrow"), 5_000) != null)
+
+        // Tick "Feed the cat" off with its checkbox.
         assertFalse("starts unticked", checkbox("Feed the cat").isChecked)
         shot("widget-home")
         checkbox("Feed the cat").click()
         Live.waitUntil(10_000, "the to-do to be done in the app") { Repo.todo(feed.id)?.done == true }
         Live.waitUntil(10_000, "the widget to show it ticked") { checkbox("Feed the cat").isChecked }
-        texts = renderedTexts()
-        expect("Feed the cat crossed out", texts["Feed the cat"] == true, texts)
+        expect("Feed the cat crossed out", crossedOutOnHome("Feed the cat", true))
         shot("widget-ticked")
 
         // And back on.
         checkbox("Feed the cat").click()
         Live.waitUntil(10_000, "the to-do to be open again") { Repo.todo(feed.id)?.done == false }
         Live.waitUntil(10_000, "the widget to show it unticked") { !checkbox("Feed the cat").isChecked }
-        texts = renderedTexts()
-        expect("Feed the cat no longer crossed out", texts["Feed the cat"] == false, texts)
+        expect("Feed the cat no longer crossed out", crossedOutOnHome("Feed the cat", false))
 
         // + opens the app on a new to-do.
         onHome(By.desc("New to-do")).click()
@@ -129,11 +119,11 @@ class WidgetLiveTest {
         assertTrue("What the widget drew:\n" + problems.joinToString("\n"), problems.isEmpty())
     }
 
-    /** Drawing problems; the test still goes on to the Home screen and reports them all at the end. */
+    /** Drawing problems; the test still checks the rest and reports them all at the end. */
     private val problems = mutableListOf<String>()
 
-    private fun expect(what: String, ok: Boolean, texts: Map<String, Boolean>) {
-        if (!ok) problems += "$what; texts (crossed out?): $texts"
+    private fun expect(what: String, ok: Boolean) {
+        if (!ok) problems += what
     }
 
     private fun appIntent() = Intent(ctx, MainActivity::class.java)
@@ -171,27 +161,27 @@ class WidgetLiveTest {
     }
 
     /**
-     * Turns what Glance sends the launcher into views, here in the app, and returns every text
-     * shown with whether it is crossed out.
+     * Whether the Home screen shows [title] crossed out as [expected], waiting up to 5 s for the
+     * launcher to redraw. Its accessibility text keeps the strike-through span the widget sent.
      */
-    private fun renderedTexts(): Map<String, Boolean> {
-        val views = runBlocking { TodoWidget().compose(ctx, size = DpSize(320.dp, 480.dp)) }
-        val texts = mutableMapOf<String, Boolean>()
-        Live.instrumentation.runOnMainSync {
-            val root = FrameLayout(ctx)
-            root.addView(views.apply(ctx, root))
-            fun walk(v: View) {
-                if (v is TextView && v.text.isNotEmpty()) {
-                    val t = v.text
-                    texts[t.toString()] = t is Spanned && t.getSpans(0, t.length, StrikethroughSpan::class.java).isNotEmpty()
-                }
-                // The list's rows only become views when a launcher scrolls them in: ask its adapter.
-                if (v is AdapterView<*>) v.adapter?.let { a -> for (i in 0 until a.count) walk(a.getView(i, null, v)) }
-                if (v is ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
-            }
-            walk(root)
-        }
-        return texts
+    private fun crossedOutOnHome(title: String, expected: Boolean): Boolean {
+        onHome(By.text(title))
+        val end = System.currentTimeMillis() + 5_000
+        var seen: Boolean? = null
+        do {
+            val text = Live.instrumentation.uiAutomation.rootInActiveWindow?.let { findText(it, title) }
+            seen = text?.let { it is Spanned && it.getSpans(0, it.length, StrikethroughSpan::class.java).isNotEmpty() }
+            if (seen == expected) return true
+            Thread.sleep(250)
+        } while (System.currentTimeMillis() < end)
+        Log.w("WidgetLiveTest", "$title: crossed out $seen, expected $expected")
+        return false
+    }
+
+    private fun findText(node: AccessibilityNodeInfo, title: String): CharSequence? {
+        node.text?.takeIf { it.toString() == title }?.let { return it }
+        for (i in 0 until node.childCount) node.getChild(i)?.let { findText(it, title) }?.let { return it }
+        return null
     }
 
     /** Activities this test opened outside a scenario; later tests start their own. */
