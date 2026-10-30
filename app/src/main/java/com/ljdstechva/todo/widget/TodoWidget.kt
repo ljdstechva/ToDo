@@ -8,7 +8,6 @@ import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
@@ -35,7 +34,6 @@ import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.updateAll
-import androidx.glance.color.ColorProvider as DayNightColor
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -190,8 +188,7 @@ private fun Content(context: Context, data: AppData) {
             Empty()
         } else {
             LazyColumn(GlanceModifier.fillMaxSize()) {
-                val sheet = sheetGreen(data.settings)
-                items(open + done, itemId = { it.id }) { t -> Item(context, t, categories[t.categoryId], sheet) }
+                items(open + done, itemId = { it.id }) { t -> Item(context, t, categories[t.categoryId]) }
                 item { Spacer(GlanceModifier.height(8.dp)) }
             }
         }
@@ -199,7 +196,7 @@ private fun Content(context: Context, data: AppData) {
 }
 
 @Composable
-private fun Item(context: Context, t: Todo, category: Category?, sheetColor: ColorProvider) {
+private fun Item(context: Context, t: Todo, category: Category?) {
     val accent = category?.let { ColorProvider(categoryColor(it.color)) } ?: GlanceTheme.colors.primary
     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.Vertical.CenterVertically) {
         CheckBox(
@@ -222,22 +219,9 @@ private fun Item(context: Context, t: Todo, category: Category?, sheetColor: Col
             if (next != null) {
                 Text(next, style = TextStyle(color = GlanceTheme.colors.primary, fontSize = 12.sp), maxLines = 1)
             }
-            if (t.sheetKey != null) {
-                Text("Google Sheet", style = TextStyle(color = sheetColor, fontSize = 12.sp), maxLines = 1)
-            }
         }
     }
 }
-
-/** The app's Google Sheet green (ui.components.sheetGreen), for the widget's Light / Dark / System. */
-private fun sheetGreen(s: AppSettings): ColorProvider = when (s.theme) {
-    ThemeMode.LIGHT -> ColorProvider(SHEET_GREEN)
-    ThemeMode.DARK -> ColorProvider(SHEET_GREEN_DARK)
-    ThemeMode.SYSTEM -> DayNightColor(day = SHEET_GREEN, night = SHEET_GREEN_DARK)
-}
-
-private val SHEET_GREEN = Color(0xFF0F9D58)
-private val SHEET_GREEN_DARK = Color(0xFF5BC98A)
 
 @Composable
 private fun Empty() {

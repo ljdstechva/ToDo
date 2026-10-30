@@ -9,8 +9,6 @@ release from GitHub by itself:
 Then, with --new-apk, checks the Home screen widget on the release build (which, unlike the debug
 build of the live tests, is shrunk by R8):
   D. add the widget from Settings, add a to-do with its +, tick the to-do off on the Home screen
-  E. connect a Google Sheet (sheet-sync/sample.json stands in for the sheet's web app): its lines
-     come in, marked "Google Sheet" in the app and on the widget
 
     python3 ci/update_e2e.py --old-apk old.apk --old-code 5 --new-code 6 [--new-apk new.apk] --out out
 """
@@ -382,89 +380,13 @@ def scenario_widget(args):
            f"{'done' if in_app else 'NOT done'}{seen}{retried}")
 
 
-SAMPLE_SHEET = "https://raw.githubusercontent.com/ljdstechva/ToDo/main/sheet-sync/sample.json"
-
-
-def labels_now():
-    return sorted({n.get("text") or n.get("content-desc") or "" for n in ui_nodes()} - {""})
-
-
-def scenario_sheet(args):
-    """Runs after D, on the same install (the widget is on the Home screen)."""
-    name = "E Google Sheet on the release build"
-
-    def fail(shot_name, why):
-        shot(shot_name)
-        record(name, False, f"{why}; screen shows {labels_now()[:15]}")
-
-    open_settings()
-    # The emulator's keyboard dropped the link's last characters, and its deletes left some behind
-    # (API 36, runs 24-25). So the link goes in a few characters at a time and is read back; a
-    # wrong one is typed again in a fresh dialog (Cancel empties it).
-    def is_field(n, _):
-        return n.get("class") == "android.widget.EditText"
-    url, typed = args.sheet_url, None
-    for attempt in range(3):
-        if attempt:
-            log(f"The link field reads {typed!r}; typing it again in a fresh dialog")
-            cancel = find_text(r"^cancel$", timeout=5)
-            if cancel is not None:
-                tap(cancel)
-                wait_gone(r"^cancel$", timeout=5)
-        connect = scroll_to_text(r"^connect a google sheet$")
-        if connect is None:
-            return fail("E1-settings", "Settings has no 'Connect a Google Sheet'")
-        tap(connect)
-        field = find_node(is_field, timeout=10)
-        if field is None:
-            return fail("E1-dialog", "the connect dialog has no link field")
-        tap(field)
-        time.sleep(1)
-        for i in range(0, len(url), 16):
-            sh(f"input text '{url[i:i + 16]}'")
-            time.sleep(0.5)
-        time.sleep(1)
-        field = find_node(is_field, timeout=5)
-        typed = field.get("text") if field is not None else None
-        if typed == url:
-            break
-    else:
-        return fail("E1-dialog", f"could not type the link (the field reads {typed!r})")
-    button = find_text(r"^connect$", timeout=10)
-    if button is None:
-        return fail("E1-dialog", "no Connect button")
-    shot("E1-dialog")
-    tap(button)
-    # Connected closes the dialog; the card's Sync now and status can be below the fold.
-    if not wait_gone(r"^connect$", timeout=30):
-        return fail("E2-connect", "did not connect (the dialog stayed open)")
-    if scroll_to_text(r"^sync now$") is None:
-        return fail("E2-connect", "did not connect (no Sync now)")
-    status = find_text(r"lines? on the sheet", timeout=15)
-    shot("E2-connected")
-
-    sh("input keyevent KEYCODE_BACK")
-    row = find_text(r"sample client", timeout=15)
-    badge = find_text(r"google sheet", timeout=5)
-    shot("E3-app")
-    sh("input keyevent KEYCODE_HOME")
-    on_widget = find_on_home(lambda n, label: "sample client" in label.lower()) is not None
-    widget_badge = find_text(r"^google sheet$", timeout=5) is not None
-    shot("E4-widget")
-    record(name, row is not None and badge is not None and on_widget and widget_badge,
-           f"status {status.get('text') if status is not None else 'NOT shown'}; app: line "
-           f"{'shown' if row is not None else 'NOT shown'}, badge {'shown' if badge is not None else 'NOT shown'}; "
-           f"widget: line {'shown' if on_widget else 'NOT shown'}, badge {'shown' if widget_badge else 'NOT shown'}")
-
-
 def main():
     global OUT
     p = argparse.ArgumentParser()
     p.add_argument("--old-apk", required=True)
     p.add_argument("--old-code", type=int, required=True)
     p.add_argument("--new-code", type=int, required=True)
-    p.add_argument("--new-apk", help="the new release, for the widget and Google Sheet checks")
-    p.add_argument("--sheet-url", default=SAMPLE_SHEET, help="a web app answer for the Google Sheet check")
+    p.add_argument("--new-apk", help="the new release, for the widget check")
     p.add_argument("--out", default="out")
     args = p.parse_args()
     OUT = args.out
@@ -487,7 +409,7 @@ def main():
     try:
         scenarios = [scenario_auto, scenario_manual, scenario_no_permission]
         if args.new_apk:
-            scenarios += [scenario_widget, scenario_sheet]
+            scenarios.append(scenario_widget)
         for scenario in scenarios:
             try:
                 scenario(args)
@@ -495,7 +417,7 @@ def main():
                 record(scenario.__name__, False, f"crashed: {e}")
     finally:
         logcat.terminate()
-    subprocess.run(f"grep -E 'Updater|InstallResult|UpdateWorker|SheetSync|PackageInstaller|AndroidRuntime' {OUT}/logcat.txt > {OUT}/logcat-app.txt",
+    subprocess.run(f"grep -E 'Updater|InstallResult|UpdateWorker|PackageInstaller|AndroidRuntime' {OUT}/logcat.txt > {OUT}/logcat-app.txt",
                    shell=True)
 
     lines = [f"## Update test on API {api}: {args.old_code} → {args.new_code}", ""]

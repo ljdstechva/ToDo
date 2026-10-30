@@ -22,12 +22,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,7 +55,6 @@ import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -231,20 +228,5 @@ fun TimeDialog(title: String, hour: Int, minute: Int, onDismiss: () -> Unit, onC
                 }
             }
         }
-    }
-}
-
-/** Google Sheets' green, lighter on a dark background. */
-@Composable
-fun sheetGreen(): Color = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF5BC98A) else Color(0xFF0F9D58)
-
-/** Marks a to-do that came from the Google Sheet. */
-@Composable
-fun SheetBadge(modifier: Modifier = Modifier) {
-    val green = sheetGreen()
-    Row(modifier.testTag("sheetBadge"), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Rounded.TableChart, contentDescription = null, tint = green, modifier = Modifier.size(14.dp))
-        Spacer(Modifier.width(3.dp))
-        Text("Google Sheet", style = MaterialTheme.typography.labelMedium, color = green, maxLines = 1)
     }
 }

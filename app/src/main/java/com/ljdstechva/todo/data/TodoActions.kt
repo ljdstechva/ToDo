@@ -28,7 +28,7 @@ object TodoActions {
 
     /**
      * Saves an edited to-do's title, note, category and reminder. The rest stays as saved, so a
-     * tick from the widget or the Google Sheet while the editor was open is kept. A changed
+     * tick from the widget or a notification while the editor was open is kept. A changed
      * reminder drops any pending snooze.
      */
     suspend fun save(context: Context, todo: Todo): Todo? {
@@ -58,7 +58,7 @@ object TodoActions {
 
     suspend fun delete(context: Context, id: Long): Todo? {
         val t = Repo.todo(id) ?: return null
-        Repo.update { d -> d.copy(todos = d.todos.filterNot { it.id == id }).forgetSheetLines(listOf(t)) }
+        Repo.update { d -> d.copy(todos = d.todos.filterNot { it.id == id }) }
         ReminderScheduler.cancelAll(context, id)
         Notifications.cancel(context, id)
         return t
@@ -69,7 +69,7 @@ object TodoActions {
         val gone = Repo.data.value.todos.filter(predicate)
         if (gone.isEmpty()) return gone
         val ids = gone.map { it.id }.toSet()
-        Repo.update { d -> d.copy(todos = d.todos.filterNot { it.id in ids }).forgetSheetLines(gone) }
+        Repo.update { d -> d.copy(todos = d.todos.filterNot { it.id in ids }) }
         gone.forEach {
             ReminderScheduler.cancelAll(context, it.id)
             Notifications.cancel(context, it.id)
@@ -82,8 +82,7 @@ object TodoActions {
         if (todos.isEmpty()) return
         Repo.update { d ->
             val present = d.todos.map { it.id }.toSet()
-            val keys = todos.mapNotNull { it.sheetKey }.toSet()
-            d.copy(todos = d.todos + todos.filterNot { it.id in present }, sheet = d.sheet.copy(removed = d.sheet.removed - keys))
+            d.copy(todos = d.todos + todos.filterNot { it.id in present })
         }
         todos.forEach { reschedule(context, it.id) }
     }
@@ -137,12 +136,6 @@ object TodoActions {
                 }
             }
         }
-    }
-
-    /** Deleted to-dos from the Google Sheet: the sync must not bring their lines back. */
-    private fun AppData.forgetSheetLines(gone: List<Todo>): AppData {
-        val keys = gone.mapNotNull { it.sheetKey }
-        return if (keys.isEmpty()) this else copy(sheet = sheet.copy(removed = sheet.removed + keys))
     }
 
     suspend fun addCategory(name: String, color: Int): Category {

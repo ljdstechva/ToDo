@@ -16,7 +16,6 @@ import com.ljdstechva.todo.data.AppData
 import com.ljdstechva.todo.data.AppSettings
 import com.ljdstechva.todo.data.Repo
 import com.ljdstechva.todo.reminder.ReminderScheduler
-import com.ljdstechva.todo.sheet.SheetSyncWorker
 import kotlinx.coroutines.runBlocking
 import java.util.regex.Pattern
 
@@ -100,7 +99,7 @@ object Live {
         shell("cmd deviceidle whitelist +$pkg")
     }
 
-    /** No to-dos, no alarms, no notifications, nothing ringing; update checks off, no sheet. */
+    /** No to-dos, no alarms, no notifications, nothing ringing; update checks off. */
     fun reset() {
         if (AlarmService.ringing.value != null) {
             AlarmService.command(ctx, AlarmService.ACTION_DISMISS) // allowed: the ringing service is in the foreground
@@ -118,6 +117,5 @@ object Live {
             }
         }
         ctx.getSystemService(NotificationManager::class.java).cancelAll()
-        SheetSyncWorker.cancel(ctx)
     }
 }

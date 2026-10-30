@@ -109,7 +109,6 @@ import com.ljdstechva.todo.ui.Fmt
 import com.ljdstechva.todo.ui.components.AnimatedCheck
 import com.ljdstechva.todo.ui.components.CategoryDialog
 import com.ljdstechva.todo.ui.components.ColorDot
-import com.ljdstechva.todo.ui.components.SheetBadge
 import com.ljdstechva.todo.ui.components.StrikeText
 import com.ljdstechva.todo.ui.edit.EditSheet
 import com.ljdstechva.todo.ui.theme.categoryColor
@@ -504,8 +503,7 @@ fun TodoRow(todo: Todo, category: Category?, onToggle: () -> Unit, onOpen: () ->
                     )
                 }
                 val r = todo.reminder
-                val fromSheet = todo.sheetKey != null
-                if (r != null || category != null || fromSheet) {
+                if (r != null || category != null) {
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (r != null) {
@@ -538,10 +536,6 @@ fun TodoRow(todo: Todo, category: Category?, onToggle: () -> Unit, onOpen: () ->
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                             )
-                        }
-                        if (fromSheet) {
-                            if (r != null || category != null) Spacer(Modifier.width(10.dp))
-                            SheetBadge()
                         }
                     }
                 }
