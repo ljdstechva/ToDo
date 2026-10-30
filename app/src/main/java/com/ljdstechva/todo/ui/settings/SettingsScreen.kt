@@ -97,7 +97,9 @@ import com.ljdstechva.todo.ui.components.sheetGreen
 import com.ljdstechva.todo.ui.edit.TonePicker
 import com.ljdstechva.todo.update.Updater
 import com.ljdstechva.todo.widget.TodoWidget
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -420,7 +422,10 @@ private fun SheetCard(data: AppData) {
                 } else {
                     connectDialog = false
                     val n = Repo.data.value.todos.count { it.sheetKey != null && !it.done }
-                    Toast.makeText(context, "Connected. ${if (n == 0) "Nothing to do on the sheet" else "${todos(n)} from the sheet"}.", Toast.LENGTH_LONG).show()
+                    // A toast needs the main thread, and this may resume elsewhere (it does in tests).
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Connected. ${if (n == 0) "Nothing to do on the sheet" else "${todos(n)} from the sheet"}.", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }
