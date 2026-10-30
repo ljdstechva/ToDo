@@ -85,11 +85,12 @@ object SheetMerge {
         lines.forEachIndexed { i, line ->
             val key = keys[i]
             if (key in synced || key in data.sheet.removed) return@forEachIndexed
+            val workId = work.id // first: a new Work category takes the next id before the to-do
             val t = Todo(
                 id = nextId++,
                 title = clean(line.what),
                 note = note(line),
-                categoryId = work.id,
+                categoryId = workId,
                 // The sheet lists oldest first; the app lists open to-dos by when they were added.
                 createdAt = now + i,
                 sheetKey = key,
