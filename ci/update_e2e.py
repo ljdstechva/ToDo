@@ -258,6 +258,17 @@ def screen_size():
     return (int(m.group(1)), int(m.group(2))) if m else (1080, 2400)
 
 
+def wait_gone(pattern, timeout=10):
+    """True once no node's text matches pattern."""
+    rx = re.compile(pattern, re.I)
+    end = time.time() + timeout
+    while time.time() < end:
+        if not any(rx.search(n.get("text") or n.get("content-desc") or "") for n in ui_nodes()):
+            return True
+        time.sleep(1)
+    return False
+
+
 def scroll_to_text(pattern, tries=8):
     w, h = screen_size()
     for _ in range(tries):
@@ -304,24 +315,40 @@ def scenario_widget(args):
         labels = sorted({n.get("text") or n.get("content-desc") or "" for n in ui_nodes()} - {""})
         record("D widget on the release build", False, f"{why}; screen shows {labels[:15]}")
 
-    open_settings()
-    add_widget = scroll_to_text(r"^add the widget$")
-    if add_widget is None:
-        return fail("D1-settings", "Settings has no 'Add the widget'")
-    tap(add_widget)
-    confirm = find_text(r"^(add to home ?screen|add automatically|add)$", timeout=15)
-    if confirm is None:
-        return fail("D1-pin-dialog", "the launcher did not offer to add the widget")
-    shot("D1-pin-dialog")
-    tap(confirm)
-    time.sleep(3)
+    # The launcher once took the "Add to home screen" tap and placed nothing (API 34, run 23), so
+    # a missed tap is tapped again and a missing widget is asked for once more, said in the result.
+    confirm_rx = r"^(add to home ?screen|add automatically|add)$"
+    plus, retried = None, ""
+    for attempt in (1, 2):
+        open_settings()
+        add_widget = scroll_to_text(r"^add the widget$")
+        if add_widget is None:
+            return fail("D1-settings", "Settings has no 'Add the widget'")
+        tap(add_widget)
+        confirm = find_text(confirm_rx, timeout=15)
+        if confirm is None:
+            return fail("D1-pin-dialog", "the launcher did not offer to add the widget")
+        shot("D1-pin-dialog")
+        tap(confirm)
+        if not wait_gone(confirm_rx, timeout=8):
+            log("The add-widget sheet is still open; tapping Add again")
+            confirm = find_text(confirm_rx, timeout=2)
+            if confirm is not None:
+                tap(confirm)
+        time.sleep(3)
 
-    # The widget's + opens the app on a new to-do. (uiautomator dumps show no label for the
-    # app's own "New to-do" button, so the to-do is made from the widget.)
-    sh("input keyevent KEYCODE_HOME")
-    plus = find_on_home(lambda n, label: label.lower() == "new to-do")
+        # The widget's + opens the app on a new to-do. (uiautomator dumps show no label for the
+        # app's own "New to-do" button, so the to-do is made from the widget.)
+        sh("input keyevent KEYCODE_HOME")
+        plus = find_on_home(lambda n, label: label.lower() == "new to-do")
+        if plus is not None:
+            break
+        if attempt == 1:
+            shot("D2-home-first-try")
+            log("No widget on the Home screen after adding it; asking once more")
+            retried = " (the widget was added on the second request)"
     if plus is None:
-        return fail("D2-home", "the widget's + is not on the Home screen")
+        return fail("D2-home", "the widget's + is not on the Home screen, after two requests")
     tap(plus)
     time.sleep(3)  # the app opens and the title field takes the focus
     sh("input text " + title.replace(" ", "%s"))
@@ -352,7 +379,7 @@ def scenario_widget(args):
     seen = "" if in_app else f" (screen shows {sorted({n.get('text') or n.get('content-desc') or '' for n in ui_nodes()} - {''})[:15]})"
     record("D widget on the release build", was == "false" and ticked and in_app,
            f"checkbox {was} -> {'checked' if ticked else 'NOT checked'}, app shows it "
-           f"{'done' if in_app else 'NOT done'}{seen}")
+           f"{'done' if in_app else 'NOT done'}{seen}{retried}")
 
 
 SAMPLE_SHEET = "https://raw.githubusercontent.com/ljdstechva/ToDo/main/sheet-sync/sample.json"
@@ -386,8 +413,11 @@ def scenario_sheet(args):
         return fail("E1-dialog", "no Connect button")
     shot("E1-dialog")
     tap(button)
-    if find_text(r"^sync now$", timeout=30) is None:
-        return fail("E2-connect", "did not connect")
+    # Connected closes the dialog; the card's Sync now and status can be below the fold.
+    if not wait_gone(r"^connect$", timeout=30):
+        return fail("E2-connect", "did not connect (the dialog stayed open)")
+    if scroll_to_text(r"^sync now$") is None:
+        return fail("E2-connect", "did not connect (no Sync now)")
     status = find_text(r"lines? on the sheet", timeout=15)
     shot("E2-connected")
 
